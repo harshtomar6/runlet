@@ -9,6 +9,7 @@ import { apiKeys } from "./routes/api-keys";
 import { approvals } from "./routes/approvals";
 import { credentials } from "./routes/credentials";
 import { internalTriggers } from "./routes/internal-triggers";
+import { llms } from "./routes/llms";
 import { metrics } from "./routes/metrics";
 import { nodeTypes } from "./routes/node-types";
 import { runs } from "./routes/runs";
@@ -26,8 +27,9 @@ export function createApp(): Hono<AppEnv> {
   app.use("*", requestId);
   app.onError(onError);
 
-  app.get("/", (c) => c.json({ name: "runlet", version: "0.1.0" }));
+  app.get("/", (c) => c.json({ name: "runlet", version: "0.1.0", llms: "/llms.txt" }));
   app.route("/health", health);
+  app.route("/llms.txt", llms); // public LLM build guide (llmstxt.org)
   app.route("/node-types", nodeTypes); // public catalog
   app.route("/workflows", workflows); // authed (x-owner-id)
   app.route("/events", events); // authed app event ingress
