@@ -47,6 +47,8 @@ endpoints persist through the store, which defaults to Postgres. To run the
 STORE=memory AUTH_DEV_OWNER=dev pnpm dev
 ```
 
+Then open the **dev console UI** at **http://localhost:3000/ui** — cards for the catalog, workflows (create/activate/execute), test-node, runs/metrics, events/subscriptions, credentials, approvals, and API keys, plus a toggleable console that logs every request payload + response.
+
 Now `POST /workflows`, `/execute`, `/runs`, etc. all work in-process. Data is
 **non-persistent** (lost on restart) — dev/trying-it-out only. Then walk through §4
 (the `x-owner-id` header is ignored while `AUTH_DEV_OWNER` is set).
