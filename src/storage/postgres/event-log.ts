@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, lte } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, lte, type SQL } from "drizzle-orm";
 import type { Run, RunEvent, RunStatus } from "../../domain/types";
 import type { EventLog, RunQuery, RunSummary } from "../../ports";
 import { NotFoundError } from "../../ports/errors";
@@ -12,6 +12,7 @@ export class PostgresEventLog implements EventLog {
   async createRun(r: Run): Promise<void> {
     await db().insert(runs).values({
       id: r.id,
+      ownerId: r.ownerId,
       workflowId: r.workflowId,
       versionId: r.versionId,
       status: r.status,
@@ -60,7 +61,8 @@ export class PostgresEventLog implements EventLog {
   }
 
   async query(f: RunQuery): Promise<RunSummary[]> {
-    const conds = [];
+    const conds: SQL[] = [];
+    if (f.ownerId) conds.push(eq(runs.ownerId, f.ownerId));
     if (f.workflowId) conds.push(eq(runs.workflowId, f.workflowId));
     if (f.status) conds.push(eq(runs.status, f.status));
     if (f.from) conds.push(gte(runs.startedAt, f.from));
@@ -73,29 +75,32 @@ export class PostgresEventLog implements EventLog {
       .orderBy(desc(runs.startedAt))
       .limit(f.limit ?? 200);
 
-    // TODO(M5): replace the per-run count with a single grouped aggregate.
-    const summaries: RunSummary[] = [];
-    for (const r of rows) {
-      const [agg] = await db()
-        .select({ c: count() })
-        .from(runEvents)
-        .where(and(eq(runEvents.runId, r.id), eq(runEvents.type, "node.executed")));
-      summaries.push({
-        runId: r.id,
-        workflowId: r.workflowId,
-        status: r.status as RunStatus,
-        startedAt: r.startedAt,
-        finishedAt: r.finishedAt,
-        stepCount: Number(agg?.c ?? 0),
-      });
-    }
-    return summaries;
+    if (rows.length === 0) return [];
+
+    // Single grouped aggregate for step counts across all matched runs.
+    const runIds = rows.map((r) => r.id);
+    const counts = await db()
+      .select({ runId: runEvents.runId, c: count() })
+      .from(runEvents)
+      .where(and(inArray(runEvents.runId, runIds), eq(runEvents.type, "node.executed")))
+      .groupBy(runEvents.runId);
+    const stepByRun = new Map(counts.map((c) => [c.runId, Number(c.c)]));
+
+    return rows.map((r) => ({
+      runId: r.id,
+      workflowId: r.workflowId,
+      status: r.status as RunStatus,
+      startedAt: r.startedAt,
+      finishedAt: r.finishedAt,
+      stepCount: stepByRun.get(r.id) ?? 0,
+    }));
   }
 }
 
 function toRun(r: RunRow): Run {
   return {
     id: r.id,
+    ownerId: r.ownerId,
     workflowId: r.workflowId,
     versionId: r.versionId,
     status: r.status as RunStatus,

@@ -38,6 +38,7 @@ export interface WorkflowRepo {
 }
 
 export interface RunQuery {
+  ownerId?: string;
   workflowId?: string;
   status?: RunStatus;
   from?: Date;

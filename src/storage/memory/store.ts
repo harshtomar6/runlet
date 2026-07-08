@@ -102,7 +102,9 @@ export class MemoryStore implements Store {
         return [...self.runs.values()]
           .filter(
             (r) =>
-              (!f.workflowId || r.workflowId === f.workflowId) && (!f.status || r.status === f.status),
+              (!f.ownerId || r.ownerId === f.ownerId) &&
+              (!f.workflowId || r.workflowId === f.workflowId) &&
+              (!f.status || r.status === f.status),
           )
           .map<RunSummary>((r) => ({
             runId: r.id,

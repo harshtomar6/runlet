@@ -6,10 +6,12 @@ import type { Run } from "../domain/types";
 import type { Store } from "../ports";
 import { store as defaultStore } from "../storage/factory";
 import { LocalExecutionContext } from "./local-context";
+import { LoggingEventSink } from "./logging-sink";
 import { runWorkflow } from "./interpreter";
 import { StoreEventSink } from "./sink";
 
 export interface StartInput {
+  ownerId: string;
   workflowId: string;
   versionId: string;
   trigger: unknown;
@@ -22,6 +24,7 @@ export interface Dispatcher {
 function newRunRow(runId: string, input: StartInput): Run {
   return {
     id: runId,
+    ownerId: input.ownerId,
     workflowId: input.workflowId,
     versionId: input.versionId,
     status: "running",
@@ -46,7 +49,7 @@ export class LocalDispatcher implements Dispatcher {
         runId,
         def,
         trigger: input.trigger,
-        sink: new StoreEventSink(this.store.events),
+        sink: new LoggingEventSink(new StoreEventSink(this.store.events)),
         rt: {
           kv: this.store.kv,
           credentials: this.store.credentials,
@@ -85,7 +88,13 @@ export class QStashDispatcher implements Dispatcher {
     const client = new Client({ token: env.QSTASH_TOKEN });
     await client.trigger({
       url: env.ENGINE_URL,
-      body: { runId, workflowId: input.workflowId, versionId: input.versionId, trigger: input.trigger },
+      body: {
+        runId,
+        ownerId: input.ownerId,
+        workflowId: input.workflowId,
+        versionId: input.versionId,
+        trigger: input.trigger,
+      },
     });
     return { runId };
   }

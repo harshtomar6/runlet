@@ -15,6 +15,13 @@
       "when": 1783513707092,
       "tag": "0001_black_falcon",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1783513729928,
+      "tag": "0002_stiff_exodus",
+      "breakpoints": true
     }
   ]
 }

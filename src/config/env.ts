@@ -39,6 +39,12 @@ const EnvSchema = z.object({
   INTERNAL_SECRET: z.string().optional(),
   // Optional HMAC secret; when set, /hooks/:id requires a valid x-signature.
   WEBHOOK_SECRET: z.string().optional(),
+
+  // Observability (all optional; absent => console-only / no alerts).
+  AXIOM_TOKEN: z.string().optional(),
+  AXIOM_DATASET: z.string().optional(),
+  SLACK_ALERT_WEBHOOK: z.string().url().optional(),
+  LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

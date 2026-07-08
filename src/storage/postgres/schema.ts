@@ -50,6 +50,7 @@ export const runs = pgTable(
   "runs",
   {
     id: text("id").primaryKey(),
+    ownerId: text("owner_id").notNull().default(""),
     workflowId: text("workflow_id").notNull(),
     versionId: text("version_id").notNull(),
     status: text("status").notNull().default("running"),
@@ -60,6 +61,7 @@ export const runs = pgTable(
   },
   (t) => ({
     byWorkflow: index("runs_workflow_idx").on(t.workflowId),
+    byOwner: index("runs_owner_idx").on(t.ownerId),
     byStatus: index("runs_status_idx").on(t.status),
   }),
 );

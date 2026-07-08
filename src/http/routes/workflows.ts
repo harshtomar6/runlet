@@ -97,7 +97,8 @@ workflows.post("/:id/execute", async (c) => {
   const id = c.req.param("id");
   const raw = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
   const trigger = "input" in raw ? raw.input : raw;
-  const versionId = await service.executableVersionId(c.get("ownerId"), id);
-  const { runId } = await dispatcher.start({ workflowId: id, versionId, trigger });
+  const ownerId = c.get("ownerId");
+  const versionId = await service.executableVersionId(ownerId, id);
+  const { runId } = await dispatcher.start({ ownerId, workflowId: id, versionId, trigger });
   return ok(c, { runId }, {}, 202);
 });

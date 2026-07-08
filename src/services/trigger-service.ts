@@ -23,6 +23,11 @@ export class TriggerService {
         `Workflow ${workflowId} is not active (status=${wf.status})`,
       );
     }
-    return this.dispatcher.start({ workflowId, versionId: wf.activeVersionId, trigger });
+    return this.dispatcher.start({
+      ownerId: wf.ownerId,
+      workflowId,
+      versionId: wf.activeVersionId,
+      trigger,
+    });
   }
 }

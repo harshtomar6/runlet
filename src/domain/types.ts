@@ -60,6 +60,7 @@ export type RunStatus = "running" | "succeeded" | "failed" | "cancelled";
 
 export interface Run {
   id: string;
+  ownerId: string;
   workflowId: string;
   versionId: string; // PINNED at start
   status: RunStatus;
