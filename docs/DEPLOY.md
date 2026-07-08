@@ -73,6 +73,8 @@ wrangler secret put DATABASE_URL          # Neon connection string
 wrangler secret put UPSTASH_REDIS_REST_URL
 wrangler secret put UPSTASH_REDIS_REST_TOKEN
 wrangler secret put QSTASH_TOKEN
+wrangler secret put QSTASH_CURRENT_SIGNING_KEY   # verifies inbound /engine requests
+wrangler secret put QSTASH_NEXT_SIGNING_KEY
 wrangler secret put CREDENTIAL_ENC_KEY
 wrangler secret put INTERNAL_SECRET
 wrangler deploy
