@@ -1,5 +1,18 @@
 import { z } from "zod";
 
+// Load a local .env for dev and CLI scripts (pnpm dev / create-api-key / demo).
+// tsx doesn't auto-load .env, so without this DATABASE_URL & friends never reach
+// process.env. Guarded: no-op on serverless/edge (Vercel/Cloudflare) where
+// `process.loadEnvFile` is absent and the platform injects env, and non-fatal
+// when no .env exists. Real shell/platform vars always win over .env.
+if (typeof process !== "undefined" && typeof process.loadEnvFile === "function") {
+  try {
+    process.loadEnvFile();
+  } catch {
+    // No .env file (or no filesystem) — fall back to the ambient environment.
+  }
+}
+
 /**
  * Environment configuration, parsed and validated once at import time.
  *
