@@ -36,13 +36,21 @@ curl localhost:3000/health
 curl localhost:3000/node-types            # 11 node types with JSON Schemas
 ```
 
-For local API calls without minting keys, set a dev owner (bypasses auth — **dev only**):
+### Full API with zero infra
+
+`DISPATCH_MODE` controls *execution*; storage is separate. The workflow CRUD/runs
+endpoints persist through the store, which defaults to Postgres. To run the
+**entire API with no Postgres/Redis**, use the in-memory store + the dev auth bypass:
 
 ```bash
-AUTH_DEV_OWNER=dev pnpm dev
+STORE=memory AUTH_DEV_OWNER=dev pnpm dev
 ```
 
-> The workflow CRUD/runs endpoints need Postgres (they connect lazily on first use). For a full local API, set `DATABASE_URL` + Upstash Redis (below) but keep `DISPATCH_MODE=local`.
+Now `POST /workflows`, `/execute`, `/runs`, etc. all work in-process. Data is
+**non-persistent** (lost on restart) — dev/trying-it-out only. Then walk through §4
+(the `x-owner-id` header is ignored while `AUTH_DEV_OWNER` is set).
+
+> For a persistent local API instead, set `DATABASE_URL` + Upstash Redis (below), keep `STORE=postgres` and `DISPATCH_MODE=local`.
 
 ---
 

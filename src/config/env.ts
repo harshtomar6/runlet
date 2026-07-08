@@ -11,6 +11,11 @@ const EnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().positive().default(3000),
 
+  // Storage backend for the whole app. "memory" = in-process, non-persistent
+  // (zero infra — great for local dev/trying it out; data is lost on restart).
+  // "postgres" = the Postgres + Redis adapters (production).
+  STORE: z.enum(["postgres", "memory"]).default("postgres"),
+
   WORKFLOW_STORE: z.enum(["postgres"]).default("postgres"),
   EVENT_STORE: z.enum(["postgres"]).default("postgres"),
   CRED_STORE: z.enum(["postgres"]).default("postgres"),
