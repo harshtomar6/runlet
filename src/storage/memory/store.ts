@@ -12,6 +12,7 @@ import type {
 import { NotFoundError } from "../../ports/errors";
 import type {
   ApiKeyRepo,
+  ConversationStore,
   CredentialStore,
   EventLog,
   PutCredentialInput,
@@ -22,11 +23,13 @@ import type {
   WorkflowFilter,
   WorkflowRepo,
 } from "../../ports";
+import { MemoryConversationStore } from "./conversation-store";
 import { MemoryKVState } from "./kv-state";
 
 /** Full in-memory Store for tests and demos. No persistence, no I/O. */
 export class MemoryStore implements Store {
   readonly kv = new MemoryKVState();
+  readonly conversations: ConversationStore = new MemoryConversationStore();
   readonly workflows: WorkflowRepo;
   readonly events: EventLog;
   readonly credentials: CredentialStore;

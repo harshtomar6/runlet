@@ -346,7 +346,9 @@ Node `inputSchema` (Zod) is converted to **JSON Schema** (`zod-to-json-schema`) 
 Implemented:
 - **Triggers:** `trigger.webhook`, `trigger.schedule`, `trigger.event`, `trigger.manual`
 - **Actions:** `http.request` (SSRF-safe), `email.send` (Resend), `email.smtp` (nodemailer), `slack.post`
-- **AI:** `ai.complete`, `ai.image`, `ai.transcribe`, `ai.tts` — all via OpenRouter (one `openrouter` credential, model-dependent). Video generation isn't offered by OpenRouter → needs a dedicated provider.
+- **AI:** `ai.complete` (with optional conversation `memory`), `ai.image`, `ai.transcribe`, `ai.tts`, `ai.agent` (bounded tool-calling loop over allowlisted catalog nodes) — all via OpenRouter (one `openrouter` credential, model-dependent). Video generation isn't offered by OpenRouter → needs a dedicated provider.
+
+**Memory** is a `ConversationStore` port (Redis list per key; in-memory for tests), owner-scoped by key; `ai.complete { memory: { key, window } }` loads prior turns and appends each turn. **Tools** reuse the node registry: an `ai.agent` tool's JSON-Schema *is* the target node's `inputSchema` and its executor *is* the node's `execute` — the model can only call allowlisted node types, bounded by `maxSteps`, each tool run getting a unique `stepId`.
 - **Control:** `control.wait`, `control.if`, `control.switch`, `control.loop`, `control.filter`
 - **Data:** `data.set`, `data.transform`
 - **Utility:** `util.log`

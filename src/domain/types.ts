@@ -132,3 +132,9 @@ export interface ApiKeyMeta {
   lastUsedAt: Date | null;
   revokedAt: Date | null;
 }
+
+/** A stored conversation turn (AI memory). */
+export interface ConversationMessage {
+  role: "system" | "user" | "assistant";
+  content: string;
+}

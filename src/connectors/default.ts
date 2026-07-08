@@ -84,6 +84,10 @@ export function dryRunConnectors(): Connectors {
       async tts(_creds, input) {
         return { audio: "", format: input.format ?? "mp3", model: input.model, dryRun: true };
       },
+      async chat() {
+        const message = { role: "assistant", content: "[dry-run]" };
+        return { message, content: "[dry-run]", toolCalls: [], dryRun: true };
+      },
     },
   };
 }
