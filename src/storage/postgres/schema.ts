@@ -1,4 +1,13 @@
-import { customType, index, integer, jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import {
+  customType,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
 import type { Edge, Node, TriggerConfig } from "../../domain/types";
 
 /** Postgres `bytea` column type for encrypted credential payloads. */
@@ -30,7 +39,10 @@ export const workflowVersions = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    byWorkflow: index("wv_workflow_idx").on(t.workflowId),
+    // Enforces "version is monotonic per workflow" (DESIGN §4) and prevents
+    // duplicate version numbers from concurrent/buggy createVersion calls.
+    // The composite also serves workflow_id prefix lookups.
+    byWorkflowVersion: uniqueIndex("wv_workflow_version_uidx").on(t.workflowId, t.version),
   }),
 );
 

@@ -27,6 +27,7 @@ export interface WorkflowRepo {
   setStatus(id: string, status: WorkflowStatus): Promise<void>;
 
   getVersion(workflowId: string, versionId: string): Promise<WorkflowVersion>;
+  listVersions(workflowId: string): Promise<WorkflowVersion[]>; // newest first
   createVersion(v: WorkflowVersion): Promise<void>; // immutable
   activate(workflowId: string, versionId: string): Promise<void>; // atomic
 

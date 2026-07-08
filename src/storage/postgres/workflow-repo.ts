@@ -77,6 +77,15 @@ export class PostgresWorkflowRepo implements WorkflowRepo {
     return toVersion(row);
   }
 
+  async listVersions(workflowId: string): Promise<WorkflowVersion[]> {
+    const rows = await db()
+      .select()
+      .from(workflowVersions)
+      .where(eq(workflowVersions.workflowId, workflowId))
+      .orderBy(desc(workflowVersions.version));
+    return rows.map(toVersion);
+  }
+
   async createVersion(v: WorkflowVersion): Promise<void> {
     await db().insert(workflowVersions).values({
       id: v.id,
@@ -89,6 +98,9 @@ export class PostgresWorkflowRepo implements WorkflowRepo {
   }
 
   async activate(workflowId: string, versionId: string): Promise<void> {
+    // Verify the version exists and belongs to this workflow before pointing
+    // the workflow at it (throws NotFoundError otherwise).
+    await this.getVersion(workflowId, versionId);
     await db()
       .update(workflows)
       .set({ activeVersionId: versionId, status: "active", updatedAt: new Date() })
