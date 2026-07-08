@@ -5,6 +5,7 @@ import { requestId } from "./middleware/request-id";
 import { events } from "./routes/events";
 import { health } from "./routes/health";
 import { hooks } from "./routes/hooks";
+import { credentials } from "./routes/credentials";
 import { internalTriggers } from "./routes/internal-triggers";
 import { metrics } from "./routes/metrics";
 import { nodeTypes } from "./routes/node-types";
@@ -31,6 +32,7 @@ export function createApp(): Hono<AppEnv> {
   app.route("/subscriptions", subscriptions); // authed event→workflow routing
   app.route("/runs", runs); // authed run observability
   app.route("/metrics", metrics); // authed aggregate metrics
+  app.route("/credentials", credentials); // authed encrypted secrets
   app.route("/hooks", hooks); // public webhook entrypoint (optional HMAC)
   app.route("/triggers", internalTriggers); // internal schedule ticks (secret)
 

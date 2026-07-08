@@ -40,7 +40,7 @@ export class NodeTestService {
     if (def.kind === "wait") return { data: { note: "wait nodes have no output to test" } };
     if (!def.execute) throw new ApiError(400, "no_runtime", `Node "${node.type}" has no runtime`);
 
-    const inputs = resolveInputs(node.params, buildScope(input.sampleInput));
+    const inputs = await resolveInputs(node.params, buildScope(input.sampleInput));
 
     // Validate resolved inputs so a missing/undefined value returns a clear error
     // rather than silently coercing to "undefined" inside execute.
