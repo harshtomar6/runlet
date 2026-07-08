@@ -5,7 +5,7 @@ import { createApp } from "./app";
 test("GET /health is public and reports ok", async () => {
   const res = await createApp().request("/health");
   assert.equal(res.status, 200);
-  assert.equal((await res.json()).status, "ok");
+  assert.equal(((await res.json()) as { status?: string }).status, "ok");
 });
 
 test("GET /health/db reports the store outcome (memory store)", async () => {
