@@ -484,6 +484,34 @@
         null, 2,
       );
 
+      // Service monitor: alert to Slack only on the first failure in a window
+      // (state.setNX dedups); recovery clears the key so a future outage re-alerts.
+      const MONITOR_WF = JSON.stringify(
+        {
+          name: "service-monitor",
+          trigger: { type: "schedule", cron: "*/1 * * * *" },
+          nodes: [
+            { id: "t", type: "trigger.schedule", params: { cron: "*/1 * * * *" } },
+            { id: "check", type: "http.request", params: { method: "GET", url: "https://example.com/health" } },
+            { id: "down", type: "control.if", params: { condition: "{{ check.status != 200 }}" } },
+            { id: "claim", type: "state.setNX", params: { key: "alert:example", ttlSec: 3600 } },
+            { id: "first", type: "control.if", params: { condition: "{{ claim.set }}" } },
+            { id: "alert", type: "slack.post", params: { channel: "#alerts", text: "🚨 example.com is down" } },
+            { id: "reset", type: "state.delete", params: { key: "alert:example" } },
+          ],
+          edges: [
+            { from: { nodeId: "t", port: "out" }, to: { nodeId: "check", port: "in" } },
+            { from: { nodeId: "check", port: "success" }, to: { nodeId: "down", port: "in" } },
+            { from: { nodeId: "down", port: "true" }, to: { nodeId: "claim", port: "in" } },
+            { from: { nodeId: "down", port: "false" }, to: { nodeId: "reset", port: "in" } },
+            { from: { nodeId: "claim", port: "out" }, to: { nodeId: "first", port: "in" } },
+            { from: { nodeId: "first", port: "true" }, to: { nodeId: "alert", port: "in" } },
+          ],
+        },
+        null, 2,
+      );
+      const EXAMPLES = { ai: EXAMPLE_WF, monitor: MONITOR_WF };
+
       const cards = [
         {
           title: "Node catalog",
@@ -502,11 +530,23 @@
         {
           title: "Create workflow",
           html: `
+            <div class="row"><label>example</label>
+              <select data-examples>
+                <option value="ai">AI demo (manual → ai.complete → log)</option>
+                <option value="monitor">Service monitor (schedule → http → state → slack)</option>
+              </select></div>
             <textarea data-wf rows="12"></textarea>
             <div class="row"><button class="primary" data-act="create">POST /workflows</button></div>
             <div class="out" data-out></div>`,
           wire(el) {
-            el.querySelector("[data-wf]").value = EXAMPLE_WF;
+            const ta = el.querySelector("[data-wf]");
+            ta.value = EXAMPLE_WF;
+            el.querySelector("[data-examples]").onchange = (ev) => {
+              ta.value = EXAMPLES[ev.target.value] || EXAMPLE_WF;
+              const g = document.querySelector("[data-graph]");
+              const def = parseJSON(ta.value, null);
+              if (g && def) renderGraph(g, def);
+            };
             const out = el.querySelector("[data-out]");
             el.querySelector('[data-act=create]').onclick = async () => {
               const body = parseJSON(el.querySelector("[data-wf]").value, null);
