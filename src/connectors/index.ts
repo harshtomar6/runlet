@@ -32,8 +32,20 @@ export interface HttpConnector {
   request(input: HttpInput): Promise<{ status: number; body: unknown }>;
 }
 
+export interface SmtpInput {
+  to: string;
+  subject: string;
+  html?: string;
+  text?: string;
+}
+
+export interface SmtpConnector {
+  send(creds: DecryptedSecret | null, input: SmtpInput): Promise<{ messageId: string; dryRun: boolean }>;
+}
+
 export interface Connectors {
   email: EmailConnector;
   slack: SlackConnector;
   http: HttpConnector;
+  smtp: SmtpConnector;
 }

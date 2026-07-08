@@ -16,4 +16,20 @@ export const dataSet = defineNode({
   },
 });
 
-export const dataNodes = [dataSet];
+export const dataTransform = defineNode({
+  type: "data.transform",
+  app: "data",
+  kind: "action",
+  category: "Data",
+  label: "Transform",
+  description: "Outputs a value computed from an expression (e.g. reshape upstream data).",
+  inputSchema: z.object({
+    value: z.unknown(), // usually a {{ expression }} or object of expressions
+  }),
+  outputs: ["out"],
+  execute: async ({ inputs }) => {
+    return { data: inputs.value ?? null, port: "out" };
+  },
+});
+
+export const dataNodes = [dataSet, dataTransform];

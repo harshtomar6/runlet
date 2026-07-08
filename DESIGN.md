@@ -342,11 +342,15 @@ export const emailSend = defineNode({
 ### 7.2 Schema → UI
 Node `inputSchema` (Zod) is converted to **JSON Schema** (`zod-to-json-schema`) and returned by the catalog API. UIs render config forms generically — they never hard-code node knowledge.
 
-### 7.3 Starter catalog (covers email + monitoring cases)
+### 7.3 Starter catalog
+Implemented:
 - **Triggers:** `trigger.webhook`, `trigger.schedule`, `trigger.event`, `trigger.manual`
-- **Actions:** `http.request`, `email.send`, `slack.post`
-- **Control:** `control.wait`, `control.if`, `control.switch`, `control.loop`, `control.splitInBatches`, `control.merge`, `control.filter`
-- **Data:** `data.set`, `data.transform`, `data.code` (sandboxed)
+- **Actions:** `http.request` (SSRF-safe), `email.send` (Resend), `email.smtp` (nodemailer), `slack.post`
+- **Control:** `control.wait`, `control.if`, `control.switch`, `control.loop`, `control.filter`
+- **Data:** `data.set`, `data.transform`
+- **Utility:** `util.log`
+
+Deferred: `control.merge` (explicit join), `control.splitInBatches` (per-item iteration), `data.code` (JS sandbox).
 
 ---
 

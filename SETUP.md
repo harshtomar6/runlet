@@ -33,7 +33,8 @@ Health check and node catalog work with no config:
 
 ```bash
 curl localhost:3000/health
-curl localhost:3000/node-types            # 11 node types with JSON Schemas
+curl localhost:3000/node-types            # node types with JSON Schemas
+curl 'localhost:3000/node-types?grouped=true'   # grouped by integration/app
 ```
 
 ### Full API with zero infra

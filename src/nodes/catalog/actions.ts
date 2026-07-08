@@ -81,4 +81,37 @@ export const httpRequest = defineNode({
   },
 });
 
-export const actionNodes = [emailSend, slackPost, httpRequest];
+export const smtpSend = defineNode({
+  type: "email.smtp",
+  app: "email",
+  kind: "action",
+  category: "Email",
+  label: "Send Email (SMTP)",
+  description: "Sends an email over SMTP (nodemailer). Requires an `smtp` credential.",
+  inputSchema: z.object({
+    to: z.string().min(1),
+    subject: z.string().min(1),
+    html: z.string().optional(),
+    text: z.string().optional(),
+    credentialId: z.string().optional(),
+  }),
+  outputs: ["success", "error"],
+  credentials: ["smtp"],
+  execute: async ({ inputs, params, rt }) => {
+    const to = String(inputs.to);
+    const idem = `smtp:${rt.stepId}:${to}`;
+    if (!(await rt.kv.setNX(idem, "1", 86_400))) {
+      return { data: { skipped: true }, port: "success" };
+    }
+    const creds = params.credentialId ? await rt.credentials.get(String(params.credentialId)) : null;
+    const res = await rt.connectors.smtp.send(creds, {
+      to,
+      subject: String(inputs.subject),
+      html: inputs.html as string | undefined,
+      text: inputs.text as string | undefined,
+    });
+    return { data: res, port: "success" };
+  },
+});
+
+export const actionNodes = [emailSend, smtpSend, slackPost, httpRequest];
