@@ -10,11 +10,29 @@ import {
 } from "drizzle-orm/pg-core";
 import type { Edge, Node, TriggerConfig } from "../../domain/types";
 
-/** Postgres `bytea` column type for encrypted credential payloads. */
-const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+/**
+ * Postgres `bytea` column type for encrypted credential payloads.
+ *
+ * Must be driver-agnostic: postgres.js (TCP) returns bytea as a Buffer, but the
+ * Neon HTTP driver returns it as a hex string ("\\x0a1b…"). Normalise reads back
+ * to a Buffer so the credential store's decrypt path works under both drivers.
+ */
+/** Normalise a driver's `bytea` representation to a Buffer (see `bytea` below). */
+export function byteaFromDriver(value: Buffer | Uint8Array | string): Buffer {
+  if (Buffer.isBuffer(value)) return value;
+  if (value instanceof Uint8Array) return Buffer.from(value);
+  // Neon HTTP driver: hex-encoded, prefixed with "\x".
+  return Buffer.from(value.startsWith("\\x") ? value.slice(2) : value, "hex");
+}
+
+const bytea = customType<{ data: Buffer; driverData: Buffer | Uint8Array | string }>({
   dataType() {
     return "bytea";
   },
+  toDriver(value: Buffer): Buffer {
+    return value;
+  },
+  fromDriver: byteaFromDriver,
 });
 
 export const workflows = pgTable("workflows", {

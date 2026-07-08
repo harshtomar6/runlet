@@ -26,7 +26,10 @@ export function db(): DB {
     if (env.DB_DRIVER === "neon") {
       _db = drizzleNeon(neon(env.DATABASE_URL), { schema }) as unknown as DB;
     } else {
-      _db = drizzlePg(postgres(env.DATABASE_URL, { prepare: false }), { schema });
+      // connect_timeout so a stalled TCP connect (common on serverless, where
+      // persistent TCP pools don't fit) fails fast with a clear error instead
+      // of hanging the request. On serverless prefer DB_DRIVER=neon (HTTP).
+      _db = drizzlePg(postgres(env.DATABASE_URL, { prepare: false, connect_timeout: 10 }), { schema });
     }
   }
   return _db;
