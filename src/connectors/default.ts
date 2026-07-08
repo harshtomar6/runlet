@@ -75,6 +75,15 @@ export function dryRunConnectors(): Connectors {
       async complete(_creds, input) {
         return { text: "[dry-run]", model: input.model, dryRun: true };
       },
+      async image(_creds, input) {
+        return { images: [], model: input.model, dryRun: true };
+      },
+      async transcribe(_creds, input) {
+        return { text: "[dry-run]", model: input.model, dryRun: true };
+      },
+      async tts(_creds, input) {
+        return { audio: "", format: input.format ?? "mp3", model: input.model, dryRun: true };
+      },
     },
   };
 }

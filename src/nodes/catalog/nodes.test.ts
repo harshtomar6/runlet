@@ -105,3 +105,19 @@ test("ai.complete requires prompt or messages", async () => {
   const { aiComplete } = await import("./ai");
   await assert.rejects(() => aiComplete.execute!(args({ model: "x" })), /prompt.*or.*messages/);
 });
+
+test("ai media nodes dry-run without a key", async () => {
+  const { aiImage, aiTranscribe, aiTts } = await import("./ai");
+
+  const img = await aiImage.execute!(args({ model: "google/gemini-2.5-flash-image-preview", prompt: "a cat" }));
+  assert.equal(img.port, "success");
+  assert.deepEqual((img.data as { images: string[] }).images, []);
+  assert.equal((img.data as { dryRun: boolean }).dryRun, true);
+
+  const stt = await aiTranscribe.execute!(args({ model: "m", audio: "AAAA", format: "mp3" }));
+  assert.equal((stt.data as { dryRun: boolean }).dryRun, true);
+
+  const tts = await aiTts.execute!(args({ model: "m", text: "hello", format: "wav" }));
+  assert.equal((tts.data as { format: string; dryRun: boolean }).format, "wav");
+  assert.equal((tts.data as { dryRun: boolean }).dryRun, true);
+});
