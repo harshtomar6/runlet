@@ -1,4 +1,5 @@
 import type {
+  ApiKey,
   CredentialMeta,
   DecryptedSecret,
   EventSubscription,
@@ -10,6 +11,7 @@ import type {
 } from "../../domain/types";
 import { NotFoundError } from "../../ports/errors";
 import type {
+  ApiKeyRepo,
   CredentialStore,
   EventLog,
   PutCredentialInput,
@@ -29,6 +31,7 @@ export class MemoryStore implements Store {
   readonly events: EventLog;
   readonly credentials: CredentialStore;
   readonly subscriptions: SubscriptionRepo;
+  readonly apiKeys: ApiKeyRepo;
 
   private readonly wf = new Map<string, Workflow>();
   private readonly versions = new Map<string, WorkflowVersion>();
@@ -36,6 +39,7 @@ export class MemoryStore implements Store {
   private readonly runEvents: RunEvent[] = [];
   private readonly creds = new Map<string, { meta: CredentialMeta; secret: Record<string, unknown> }>();
   private readonly subs = new Map<string, EventSubscription>();
+  private readonly keys = new Map<string, ApiKey>();
 
   constructor() {
     const self = this;
@@ -173,6 +177,24 @@ export class MemoryStore implements Store {
       },
       async listByWorkflow(workflowId) {
         return [...self.subs.values()].filter((s) => s.workflowId === workflowId);
+      },
+    };
+
+    this.apiKeys = {
+      async create(k) {
+        self.keys.set(k.id, { ...k });
+      },
+      async findByHash(keyHash) {
+        return [...self.keys.values()].find((k) => k.keyHash === keyHash) ?? null;
+      },
+      async listByOwner(ownerId) {
+        return [...self.keys.values()]
+          .filter((k) => k.ownerId === ownerId)
+          .map(({ keyHash: _keyHash, ...meta }) => meta);
+      },
+      async revoke(id, ownerId) {
+        const k = self.keys.get(id);
+        if (k && k.ownerId === ownerId) k.revokedAt = new Date();
       },
     };
   }

@@ -16,6 +16,9 @@ const EnvSchema = z.object({
   CRED_STORE: z.enum(["postgres"]).default("postgres"),
 
   DATABASE_URL: z.string().url().optional(),
+  // "postgres" = postgres.js over TCP (Node/Vercel/Railway);
+  // "neon" = Neon serverless HTTP driver (Cloudflare Workers / edge).
+  DB_DRIVER: z.enum(["postgres", "neon"]).default("postgres"),
 
   UPSTASH_REDIS_REST_URL: z.string().url().optional(),
   UPSTASH_REDIS_REST_TOKEN: z.string().optional(),
@@ -39,6 +42,10 @@ const EnvSchema = z.object({
   INTERNAL_SECRET: z.string().optional(),
   // Optional HMAC secret; when set, /hooks/:id requires a valid x-signature.
   WEBHOOK_SECRET: z.string().optional(),
+
+  // Dev-only auth bypass: when set, all authed requests use this owner id and
+  // skip API-key verification. NEVER set in production.
+  AUTH_DEV_OWNER: z.string().optional(),
 
   // Observability (all optional; absent => console-only / no alerts).
   AXIOM_TOKEN: z.string().optional(),

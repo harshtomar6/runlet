@@ -1,5 +1,13 @@
 import { env } from "../config/env";
-import type { CredentialStore, EventLog, Store, SubscriptionRepo, WorkflowRepo } from "../ports";
+import type {
+  ApiKeyRepo,
+  CredentialStore,
+  EventLog,
+  Store,
+  SubscriptionRepo,
+  WorkflowRepo,
+} from "../ports";
+import { PostgresApiKeyRepo } from "./postgres/api-key-repo";
 import { PostgresCredentialStore } from "./postgres/credential-store";
 import { PostgresEventLog } from "./postgres/event-log";
 import { PostgresSubscriptionRepo } from "./postgres/subscription-repo";
@@ -42,6 +50,15 @@ function mkSubscriptionRepo(kind: string): SubscriptionRepo {
   }
 }
 
+function mkApiKeyRepo(kind: string): ApiKeyRepo {
+  switch (kind) {
+    case "postgres":
+      return new PostgresApiKeyRepo();
+    default:
+      throw new Error(`Unknown WORKFLOW_STORE adapter: ${kind}`);
+  }
+}
+
 /**
  * The single Store instance the app depends on. Adapters connect lazily, so
  * constructing this at import time performs no I/O.
@@ -51,5 +68,6 @@ export const store: Store = {
   events: mkEventLog(env.EVENT_STORE),
   credentials: mkCredentialStore(env.CRED_STORE),
   subscriptions: mkSubscriptionRepo(env.WORKFLOW_STORE),
+  apiKeys: mkApiKeyRepo(env.WORKFLOW_STORE),
   kv: new RedisKVState(), // hot state is always Redis (see DESIGN.md §5)
 };

@@ -27,24 +27,14 @@ None of these are needed for local dev. Provision them when you deploy.
 
 ## B. Decisions needed before production
 
-### 1. Authentication model  🔴 blocking for prod
-Right now every authed endpoint reads a plaintext **`x-owner-id` header** — a placeholder, **not** real auth. Before exposing this, pick one:
-- **API keys** per owner (hashed, looked up server-side) — simplest for machine-to-machine.
-- **JWT** (verify a signed token, derive `ownerId` from claims) — fits if your apps already issue tokens.
-- Delegate to a gateway (e.g. your existing auth) that injects a trusted owner id.
-
-Tell me which, and I'll replace `src/http/middleware/auth.ts`.
+### 1. Authentication model  ✅ DONE — API keys
+Implemented: `Authorization: Bearer <key>` (or `x-api-key`), SHA-256-hashed at rest, owner-scoped. Manage via `POST/GET/DELETE /api-keys`; bootstrap with `pnpm create-api-key --owner <id> --name <label>`. Dev bypass: `AUTH_DEV_OWNER` (never in prod). Remaining optional follow-ups if you want them: key expiry, scopes/permissions, `lastUsedAt` tracking.
 
 ### 2. Credential encryption key custody  🔴 blocking for prod
 Env var is fine to start, but decide: plain env, or a KMS (AWS KMS / GCP KMS / Vault)? Affects rotation strategy. Right now it's a single symmetric key in `CREDENTIAL_ENC_KEY`.
 
-### 3. Deployment target
-Where does this run? It's framework-portable (Hono):
-- **Vercel** — easiest with Upstash; Node runtime.
-- **Cloudflare Workers** — cheapest, but check `node:*` usage (crypto/dns) in the SSRF guard.
-- **A Node host** (Railway/Fly/render) — no caveats.
-
-This determines the adapter entry point and how `PUBLIC_BASE_URL` is set.
+### 3. Deployment target  ✅ DONE — pick any, all wired
+Entry points + config exist for **Node/Railway** (`Dockerfile`, `pnpm start`), **Vercel** (`api/index.ts` + `vercel.json`), and **Cloudflare Workers** (`wrangler.toml`, `DB_DRIVER=neon`). See [DEPLOY.md](./DEPLOY.md). You just choose one and set env vars. Cloudflare is marked experimental (needs a Neon DB; SSRF guard degrades to hostname-only without `node:dns`).
 
 ---
 

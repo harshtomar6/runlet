@@ -1,4 +1,6 @@
 import type {
+  ApiKey,
+  ApiKeyMeta,
   CredentialMeta,
   DecryptedSecret,
   EventSubscription,
@@ -106,10 +108,18 @@ export interface SubscriptionRepo {
   listByWorkflow(workflowId: string): Promise<EventSubscription[]>;
 }
 
+export interface ApiKeyRepo {
+  create(k: ApiKey): Promise<void>;
+  findByHash(keyHash: string): Promise<ApiKey | null>;
+  listByOwner(ownerId: string): Promise<ApiKeyMeta[]>;
+  revoke(id: string, ownerId: string): Promise<void>;
+}
+
 export interface Store {
   workflows: WorkflowRepo;
   events: EventLog;
   credentials: CredentialStore;
   subscriptions: SubscriptionRepo;
+  apiKeys: ApiKeyRepo;
   kv: KVState;
 }

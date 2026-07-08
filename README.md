@@ -6,9 +6,9 @@ A headless, n8n-style workflow automation engine built on **Upstash Workflow** (
 - Extensible via a **node registry** — add a node type, and it's available to every UI and every workflow.
 - Swappable storage layer (Postgres + Redis defaults) behind narrow ports.
 
-📄 **[DESIGN.md](./DESIGN.md)** — architecture & build spec · **[SETUP.md](./SETUP.md)** — run it · **[docs/INPUTS_NEEDED.md](./docs/INPUTS_NEEDED.md)** — what I need from you
+📄 **[DESIGN.md](./DESIGN.md)** — architecture · **[SETUP.md](./SETUP.md)** — run it · **[docs/DEPLOY.md](./docs/DEPLOY.md)** — deploy · **[docs/INPUTS_NEEDED.md](./docs/INPUTS_NEEDED.md)** — decisions
 
-> Status: **M1–M7 implemented** — storage ports + adapters, workflow CRUD + versioning, node catalog, durable interpreter (JSONata + loops), triggers (webhooks/events/schedules), runs & metrics, test-node, credentials, SSRF-safe HTTP. Runs locally with **zero external services** (`DISPATCH_MODE=local`). See SETUP for the walkthrough.
+> Status: **M1–M8 implemented** — storage ports + adapters, workflow CRUD + versioning, node catalog, durable interpreter (JSONata + loops), triggers (webhooks/events/schedules), runs & metrics, test-node, credentials, SSRF-safe HTTP, **API-key auth**, and deploy targets for **Node/Railway, Vercel, Cloudflare**. Runs locally with **zero external services** (`DISPATCH_MODE=local`).
 
 ## Getting started
 
