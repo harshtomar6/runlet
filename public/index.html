@@ -80,6 +80,13 @@
       .app-slack { border-left-color: #34d399; }
       .app-http { border-left-color: #f472b6; }
       .app-util { border-left-color: #93a0b4; }
+      /* live run status on graph nodes */
+      .gnode { transition: box-shadow .15s ease, border-color .15s ease; }
+      .gnode.st-running { border-color: var(--warn); box-shadow: 0 0 0 2px var(--warn); }
+      .gnode.st-ok { border-color: var(--ok); box-shadow: 0 0 0 2px var(--ok); }
+      .gnode.st-fail { border-color: var(--err); box-shadow: 0 0 0 2px var(--err); }
+      @keyframes pulse { 0%,100% { box-shadow: 0 0 0 2px var(--warn); } 50% { box-shadow: 0 0 0 5px rgba(251,191,36,.35); } }
+      .gnode.st-running { animation: pulse 1s ease-in-out infinite; }
     </style>
   </head>
   <body>
@@ -245,6 +252,7 @@
           const p = pos.get(n.id);
           const d = document.createElement("div");
           d.className = "gnode app-" + n.type.split(".")[0];
+          d.dataset.nid = n.id;
           d.style.left = p.x + "px"; d.style.top = p.y + "px";
           d.style.width = boxW + "px"; d.style.height = boxH + "px";
           d.innerHTML = '<div class="gid"></div><div class="gtype"></div>';
@@ -253,6 +261,65 @@
           canvas.appendChild(d);
         }
         container.appendChild(canvas);
+      }
+
+      // ---------- live run status on the graph ----------
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      const TERMINAL = ["succeeded", "failed", "cancelled"];
+
+      function statusesFromEvents(events) {
+        const m = new Map();
+        for (const e of events || []) {
+          if (!e.nodeId) continue;
+          if (e.type === "node.started") m.set(e.nodeId, "running");
+          else if (e.type === "node.executed") m.set(e.nodeId, "ok");
+          else if (e.type === "node.failed") m.set(e.nodeId, "fail");
+        }
+        return m;
+      }
+
+      function paint(container, statuses) {
+        container.querySelectorAll(".gnode").forEach((el) => {
+          el.classList.remove("st-running", "st-ok", "st-fail");
+          const s = statuses.get(el.dataset.nid);
+          if (s) el.classList.add("st-" + (s === "ok" ? "ok" : s === "fail" ? "fail" : "running"));
+        });
+      }
+
+      // Watch a run: render its pinned version, then either animate the finished
+      // events (local runs complete instantly) or poll live (qstash mode).
+      async function watchRun(runId) {
+        const g = document.querySelector("[data-graph]");
+        if (!g || !runId) return;
+        const first = await api("GET", "/runs/" + runId);
+        if (!first.ok) return;
+        const run = first.data.data.run;
+        const vr = await api("GET", "/workflows/" + run.workflowId + "/versions");
+        const version = ((vr.data && vr.data.data) || []).find((v) => v.id === run.versionId);
+        if (version) renderGraph(g, version);
+
+        if (TERMINAL.includes(run.status)) {
+          // animated replay so you see nodes light up in order
+          const evs = (first.data.data.events || []).filter(
+            (e) => e.nodeId && ["node.started", "node.executed", "node.failed"].includes(e.type),
+          );
+          const acc = new Map();
+          for (const e of evs) {
+            acc.set(e.nodeId, e.type === "node.executed" ? "ok" : e.type === "node.failed" ? "fail" : "running");
+            paint(g, new Map(acc));
+            await sleep(240);
+          }
+          paint(g, statusesFromEvents(first.data.data.events));
+        } else {
+          // live polling
+          paint(g, statusesFromEvents(first.data.data.events));
+          for (let i = 0; i < 60 && !TERMINAL.includes(run.status); i++) {
+            await sleep(600);
+            const r = await api("GET", "/runs/" + runId);
+            Object.assign(run, r.data.data.run);
+            paint(g, statusesFromEvents(r.data.data.events));
+          }
+        }
       }
 
       // console toggle
@@ -378,6 +445,7 @@
               const r = await api("POST", "/workflows/" + wf() + "/execute", { input });
               if (r.ok) { state.runId = r.data.data.runId; syncIds(); }
               show(out, r.data);
+              if (r.ok) watchRun(r.data.data.runId); // light up the graph live
             };
           },
         },
@@ -401,13 +469,14 @@
           title: "Runs & metrics",
           html: `
             <div class="row"><button data-act="list">List runs</button><button data-act="metrics">Metrics</button></div>
-            <div class="row"><input data-bind="runId" placeholder="runId" /><button data-act="get">Get run</button></div>
+            <div class="row"><input data-bind="runId" placeholder="runId" /><button data-act="get">Get run</button><button data-act="watch">Watch in graph</button></div>
             <pre class="out" data-out></pre>`,
           wire(el) {
             const out = el.querySelector("[data-out]");
             el.querySelector('[data-act=list]').onclick = async () => show(out, (await api("GET", "/runs")).data);
             el.querySelector('[data-act=metrics]').onclick = async () => show(out, (await api("GET", "/metrics")).data);
             el.querySelector('[data-act=get]').onclick = async () => show(out, (await api("GET", "/runs/" + el.querySelector('[data-bind=runId]').value.trim())).data);
+            el.querySelector('[data-act=watch]').onclick = () => watchRun(el.querySelector('[data-bind=runId]').value.trim());
           },
         },
         {
