@@ -14,7 +14,7 @@
     "gen:llms": "tsx scripts/gen-llms.ts",
     "vercel-build": "pnpm gen:llms && esbuild src/entry/vercel.ts --bundle --platform=node --format=esm --packages=external --outfile=api/_app.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test 'src/**/*.test.ts'",
+    "test": "STORE=memory node --import tsx --test 'src/**/*.test.ts'",
     "demo": "tsx scripts/demo-local.ts",
     "create-api-key": "tsx scripts/create-api-key.ts",
     "db:generate": "drizzle-kit generate",

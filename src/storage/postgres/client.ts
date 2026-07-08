@@ -7,7 +7,10 @@ import * as schema from "./schema";
 
 /** Bound the Neon HTTP request so an unresponsive endpoint fails fast + logged,
  *  instead of hanging the whole request until the platform kills the function. */
-const NEON_TIMEOUT_MS = 10_000;
+// Kept below Vercel's function duration cap (Hobby = 10s) so the timeout fires
+// and its error is thrown/logged/returned BEFORE the platform hard-kills the
+// function (a kill loses buffered logs → the "timed out with no logs" symptom).
+const NEON_TIMEOUT_MS = 7_000;
 let neonFetchConfigured = false;
 function configureNeonTimeout(): void {
   if (neonFetchConfigured) return;
