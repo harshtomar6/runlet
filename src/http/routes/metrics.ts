@@ -12,5 +12,6 @@ metrics.use("*", auth);
 
 metrics.get("/", async (c) => {
   const workflowId = c.req.query("workflowId");
-  return ok(c, await service.metrics(c.get("ownerId"), { workflowId }));
+  const window = c.req.query("window");
+  return ok(c, await service.metrics(c.get("ownerId"), { workflowId, window }));
 });

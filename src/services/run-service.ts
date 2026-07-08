@@ -1,4 +1,5 @@
 import type { Run, RunEvent, RunStatus } from "../domain/types";
+import { parseDuration } from "../engine/duration";
 import { ApiError } from "../errors";
 import type { RunSummary, Store } from "../ports";
 
@@ -11,6 +12,7 @@ export interface Metrics {
   total: number;
   byStatus: Record<string, number>;
   totalSteps: number;
+  successRate: number; // succeeded / total (0 when total === 0)
 }
 
 /** Read model over runs + events, owner-scoped. */
@@ -19,7 +21,7 @@ export class RunService {
 
   async list(
     ownerId: string,
-    filter: { workflowId?: string; status?: RunStatus; limit?: number },
+    filter: { workflowId?: string; status?: RunStatus; limit?: number; from?: Date; to?: Date },
   ): Promise<RunSummary[]> {
     return this.store.events.query({ ownerId, ...filter });
   }
@@ -44,14 +46,22 @@ export class RunService {
     }
   }
 
-  async metrics(ownerId: string, filter: { workflowId?: string }): Promise<Metrics> {
-    const summaries = await this.store.events.query({ ownerId, ...filter, limit: 1000 });
-    const byStatus: Record<string, number> = {};
-    let totalSteps = 0;
-    for (const s of summaries) {
-      byStatus[s.status] = (byStatus[s.status] ?? 0) + 1;
-      totalSteps += s.stepCount;
+  async metrics(ownerId: string, filter: { workflowId?: string; window?: string }): Promise<Metrics> {
+    // window like "24h" / "7d" → lower bound on startedAt.
+    let from: Date | undefined;
+    if (filter.window) {
+      let seconds: number;
+      try {
+        seconds = parseDuration(filter.window);
+      } catch {
+        throw new ApiError(400, "invalid_window", `Invalid window: "${filter.window}" (e.g. 24h, 7d)`);
+      }
+      from = new Date(Date.now() - seconds * 1000);
     }
-    return { total: summaries.length, byStatus, totalSteps };
+    // SQL-side aggregate over ALL matching runs (no capped fetch).
+    const m = await this.store.events.metrics({ ownerId, workflowId: filter.workflowId, from });
+    const succeeded = m.byStatus.succeeded ?? 0;
+    const successRate = m.total > 0 ? succeeded / m.total : 0;
+    return { ...m, successRate };
   }
 }

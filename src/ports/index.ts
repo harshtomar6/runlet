@@ -55,6 +55,12 @@ export interface RunSummary {
   stepCount: number;
 }
 
+export interface RunMetrics {
+  total: number;
+  byStatus: Record<string, number>;
+  totalSteps: number;
+}
+
 export interface EventLog {
   createRun(r: Run): Promise<void>;
   updateRun(id: string, patch: Partial<Run>): Promise<void>;
@@ -65,6 +71,9 @@ export interface EventLog {
 
   /** Analytics-shaped. A non-relational adapter may throw UnsupportedOperation. */
   query(f: RunQuery): Promise<RunSummary[]>;
+
+  /** SQL-side aggregate over ALL matching runs (not a capped fetch). */
+  metrics(f: RunQuery): Promise<RunMetrics>;
 }
 
 export interface PutCredentialInput {

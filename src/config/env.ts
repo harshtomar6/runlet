@@ -44,6 +44,7 @@ const EnvSchema = z.object({
   AXIOM_TOKEN: z.string().optional(),
   AXIOM_DATASET: z.string().optional(),
   SLACK_ALERT_WEBHOOK: z.string().url().optional(),
+  SENTRY_DSN: z.string().url().optional(),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
 });
 

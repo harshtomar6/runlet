@@ -58,6 +58,25 @@ test("run detail, listing, and metrics are owner-scoped", async () => {
   const metrics = await svc.metrics("owner-1", {});
   assert.deepEqual(metrics.byStatus, { succeeded: 1 });
   assert.equal(metrics.totalSteps, 1);
+  assert.equal(metrics.successRate, 1);
 
   assert.equal((await svc.list("owner-2", {})).length, 0);
+});
+
+test("metrics computes successRate over mixed statuses and empty is 0", async () => {
+  const store = new MemoryStore();
+  const base = { ownerId: "o", workflowId: "w", versionId: "v", trigger: {}, workflowRunId: null, startedAt: new Date(), finishedAt: new Date() };
+  await store.events.createRun({ id: "r1", status: "succeeded", ...base });
+  await store.events.createRun({ id: "r2", status: "succeeded", ...base });
+  await store.events.createRun({ id: "r3", status: "failed", ...base });
+
+  const svc = new RunService(store);
+  const m = await svc.metrics("o", {});
+  assert.equal(m.total, 3);
+  assert.deepEqual(m.byStatus, { succeeded: 2, failed: 1 });
+  assert.ok(Math.abs(m.successRate - 2 / 3) < 1e-9);
+
+  const empty = await svc.metrics("nobody", {});
+  assert.equal(empty.total, 0);
+  assert.equal(empty.successRate, 0); // guarded, no NaN
 });

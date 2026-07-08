@@ -115,6 +115,23 @@ export class MemoryStore implements Store {
             stepCount: self.runEvents.filter((e) => e.runId === r.id && e.type === "node.executed").length,
           }));
       },
+      async metrics(f: RunQuery) {
+        const matched = [...self.runs.values()].filter(
+          (r) =>
+            (!f.ownerId || r.ownerId === f.ownerId) &&
+            (!f.workflowId || r.workflowId === f.workflowId) &&
+            (!f.status || r.status === f.status) &&
+            (!f.from || r.startedAt >= f.from) &&
+            (!f.to || r.startedAt <= f.to),
+        );
+        const byStatus: Record<string, number> = {};
+        for (const r of matched) byStatus[r.status] = (byStatus[r.status] ?? 0) + 1;
+        const ids = new Set(matched.map((r) => r.id));
+        const totalSteps = self.runEvents.filter(
+          (e) => e.type === "node.executed" && ids.has(e.runId),
+        ).length;
+        return { total: matched.length, byStatus, totalSteps };
+      },
     };
 
     this.credentials = {

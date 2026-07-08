@@ -53,12 +53,16 @@ export const engineRoute = serve<EnginePayload>(
     failureFunction: async ({ context, failStatus, failResponse }) => {
       const payload = context.requestPayload as EnginePayload | undefined;
       const runId = payload?.runId;
+      let failedNodeId: string | undefined;
       if (runId) {
+        // Recover the failing node from the most recent node.failed event (§11).
+        const events = await store.events.listEvents(runId);
+        for (const e of events) if (e.type === "node.failed" && e.nodeId) failedNodeId = e.nodeId;
         await store.events.append({
           id: newId(),
           runId,
           type: "run.failed",
-          error: { failStatus, failResponse },
+          error: { failStatus, failResponse, failedNodeId },
           ts: new Date(),
         });
         await store.events.updateRun(runId, { status: "failed", finishedAt: new Date() });
@@ -66,6 +70,7 @@ export const engineRoute = serve<EnginePayload>(
       await sendAlert("Workflow run failed", {
         runId: runId ?? "unknown",
         workflowId: payload?.workflowId ?? "unknown",
+        failedNodeId: failedNodeId ?? "unknown",
         failStatus,
         failResponse,
       });
