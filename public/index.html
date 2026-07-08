@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>app-automations · dev console</title>
+    <style>
+      :root {
+        --bg: #0f1115; --panel: #171a21; --panel2: #1e222b; --border: #2a2f3a;
+        --text: #e6e9ef; --muted: #93a0b4; --accent: #6ea8fe; --ok: #4ade80;
+        --err: #f87171; --warn: #fbbf24; --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--text);
+        font: 14px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+      header { position: sticky; top: 0; z-index: 5; background: var(--panel);
+        border-bottom: 1px solid var(--border); padding: 10px 16px; display: flex;
+        gap: 10px; align-items: center; flex-wrap: wrap; }
+      header h1 { font-size: 15px; margin: 0 12px 0 0; font-weight: 600; }
+      header .cfg { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; flex: 1; }
+      input, textarea, select, button { font: inherit; color: var(--text);
+        background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; }
+      input, select { min-width: 90px; }
+      textarea { width: 100%; font-family: var(--mono); font-size: 12.5px; resize: vertical; }
+      button { cursor: pointer; background: var(--panel2); }
+      button:hover { border-color: var(--accent); }
+      button.primary { background: var(--accent); color: #0b1020; border-color: var(--accent); font-weight: 600; }
+      label { color: var(--muted); font-size: 12px; }
+      main { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+        gap: 12px; padding: 12px; padding-bottom: 42vh; }
+      .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+      .card h2 { font-size: 13px; margin: 0; padding: 10px 12px; border-bottom: 1px solid var(--border);
+        background: var(--panel2); font-weight: 600; }
+      .card .body { padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+      .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+      .row > * { flex: 1; min-width: 0; }
+      .row > button { flex: 0 0 auto; }
+      pre.out { background: #0b0d12; border: 1px solid var(--border); border-radius: 6px;
+        padding: 8px; margin: 0; max-height: 220px; overflow: auto; font-size: 12px;
+        font-family: var(--mono); white-space: pre-wrap; word-break: break-word; }
+      .hint { color: var(--muted); font-size: 12px; }
+      /* console drawer */
+      #console { position: fixed; bottom: 0; left: 0; right: 0; height: 38vh;
+        background: var(--panel); border-top: 2px solid var(--border); display: flex;
+        flex-direction: column; z-index: 10; transition: transform .18s ease; }
+      body.console-hidden #console { transform: translateY(calc(100% - 38px)); }
+      #console .bar { height: 38px; display: flex; align-items: center; gap: 10px;
+        padding: 0 12px; border-bottom: 1px solid var(--border); background: var(--panel2); }
+      #console .bar strong { font-size: 13px; }
+      #console .log { flex: 1; overflow: auto; padding: 6px 0; font-family: var(--mono); font-size: 12px; }
+      .entry { border-bottom: 1px solid #20242e; }
+      .entry summary { list-style: none; cursor: pointer; padding: 5px 12px; display: flex; gap: 8px; align-items: baseline; }
+      .entry summary::-webkit-details-marker { display: none; }
+      .method { font-weight: 700; min-width: 46px; }
+      .status { min-width: 40px; font-weight: 700; }
+      .status.s2 { color: var(--ok); } .status.s4, .status.s5, .status.serr { color: var(--err); }
+      .path { color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .ms { color: var(--muted); }
+      .entry .detail { padding: 4px 12px 10px 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+      .entry .detail h4 { margin: 4px 0; color: var(--muted); font-size: 11px; text-transform: uppercase; }
+      .entry .detail pre { margin: 0; background: #0b0d12; border: 1px solid var(--border); border-radius: 6px;
+        padding: 8px; max-height: 180px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+      @media (max-width: 640px) { .entry .detail { grid-template-columns: 1fr; } }
+      .pill { font-size: 11px; color: var(--muted); }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>⚙︎ app-automations</h1>
+      <div class="cfg">
+        <label>base <input id="cfg-base" value="" style="min-width:150px" /></label>
+        <label>owner <input id="cfg-owner" value="dev" style="min-width:70px" /></label>
+        <label>api key <input id="cfg-key" placeholder="(optional)" style="min-width:120px" /></label>
+        <span class="pill">run: <code>STORE=memory AUTH_DEV_OWNER=dev pnpm dev</code></span>
+      </div>
+      <button id="toggle-console">Console ▾</button>
+    </header>
+
+    <main id="main"></main>
+
+    <section id="console">
+      <div class="bar">
+        <strong>Console</strong>
+        <span class="pill" id="console-count">0 calls</span>
+        <span style="flex:1"></span>
+        <button id="console-clear">Clear</button>
+        <button id="console-hide">Hide ▾</button>
+      </div>
+      <div class="log" id="console-log"></div>
+    </section>
+
+    <script>
+      // ---------- config + API helper (logs every call to the console) ----------
+      const $ = (id) => document.getElementById(id);
+      $("cfg-base").value = location.origin;
+
+      function cfg() {
+        return {
+          base: $("cfg-base").value.replace(/\/+$/, ""),
+          owner: $("cfg-owner").value.trim(),
+          key: $("cfg-key").value.trim(),
+        };
+      }
+
+      let callCount = 0;
+      function logEntry({ method, path, status, ms, request, response, ok }) {
+        callCount++;
+        $("console-count").textContent = callCount + (callCount === 1 ? " call" : " calls");
+        const cls = status === "ERR" ? "serr" : "s" + String(status)[0];
+        const e = document.createElement("details");
+        e.className = "entry";
+        e.open = false;
+        const reqStr = request === undefined ? "(no body)" : JSON.stringify(request, null, 2);
+        const resStr = typeof response === "string" ? response : JSON.stringify(response, null, 2);
+        e.innerHTML =
+          '<summary><span class="method">' + method + '</span>' +
+          '<span class="status ' + cls + '">' + status + '</span>' +
+          '<span class="path"></span><span class="ms">' + ms + 'ms</span></summary>' +
+          '<div class="detail"><div><h4>request</h4><pre></pre></div>' +
+          '<div><h4>response</h4><pre></pre></div></div>';
+        e.querySelector(".path").textContent = path;
+        e.querySelectorAll("pre")[0].textContent = reqStr;
+        e.querySelectorAll("pre")[1].textContent = resStr;
+        const log = $("console-log");
+        log.prepend(e);
+      }
+
+      async function api(method, path, body) {
+        const { base, owner, key } = cfg();
+        const headers = {};
+        if (body !== undefined) headers["content-type"] = "application/json";
+        if (key) headers["authorization"] = "Bearer " + key;
+        if (owner) headers["x-owner-id"] = owner;
+        const t0 = performance.now();
+        try {
+          const res = await fetch(base + path, {
+            method,
+            headers,
+            body: body !== undefined ? JSON.stringify(body) : undefined,
+          });
+          const text = await res.text();
+          let data;
+          try { data = JSON.parse(text); } catch { data = text; }
+          logEntry({ method, path, status: res.status, ms: Math.round(performance.now() - t0), request: body, response: data, ok: res.ok });
+          return { status: res.status, ok: res.ok, data };
+        } catch (err) {
+          logEntry({ method, path, status: "ERR", ms: Math.round(performance.now() - t0), request: body, response: String(err), ok: false });
+          throw err;
+        }
+      }
+
+      const show = (el, v) => { el.textContent = typeof v === "string" ? v : JSON.stringify(v, null, 2); };
+      const parseJSON = (s, fallback) => { try { return JSON.parse(s); } catch { return fallback; } };
+
+      // console toggle
+      $("toggle-console").onclick = () => document.body.classList.toggle("console-hidden");
+      $("console-hide").onclick = () => document.body.classList.add("console-hidden");
+      $("console-clear").onclick = () => { $("console-log").innerHTML = ""; callCount = 0; $("console-count").textContent = "0 calls"; };
+
+      // ---------- shared state (chain ids across cards) ----------
+      const state = { workflowId: "", versionId: "", runId: "" };
+      function syncIds() {
+        document.querySelectorAll("[data-bind=workflowId]").forEach((i) => { if (!i.value) i.value = state.workflowId; });
+        document.querySelectorAll("[data-bind=versionId]").forEach((i) => { if (!i.value) i.value = state.versionId; });
+        document.querySelectorAll("[data-bind=runId]").forEach((i) => { if (!i.value) i.value = state.runId; });
+      }
+
+      // ---------- cards ----------
+      const EXAMPLE_WF = JSON.stringify(
+        {
+          name: "demo",
+          trigger: { type: "manual" },
+          nodes: [
+            { id: "t", type: "trigger.manual", params: {} },
+            { id: "ai", type: "ai.complete", params: { model: "openai/gpt-4o-mini", prompt: "Greet {{ trigger.name }} in one line." } },
+            { id: "log", type: "util.log", params: { message: "AI said: {{ ai.text }}" } },
+          ],
+          edges: [
+            { from: { nodeId: "t", port: "out" }, to: { nodeId: "ai", port: "in" } },
+            { from: { nodeId: "ai", port: "success" }, to: { nodeId: "log", port: "in" } },
+          ],
+        },
+        null, 2,
+      );
+
+      const cards = [
+        {
+          title: "Node catalog",
+          html: `
+            <div class="row">
+              <button data-act="catalog">GET /node-types</button>
+              <button data-act="catalogGrouped">?grouped=true</button>
+            </div>
+            <pre class="out" data-out></pre>`,
+          wire(el) {
+            const out = el.querySelector("[data-out]");
+            el.querySelector('[data-act=catalog]').onclick = async () => show(out, (await api("GET", "/node-types")).data.data.map((n) => n.type));
+            el.querySelector('[data-act=catalogGrouped]').onclick = async () => show(out, (await api("GET", "/node-types?grouped=true")).data.data);
+          },
+        },
+        {
+          title: "Create workflow",
+          html: `
+            <textarea data-wf rows="12"></textarea>
+            <div class="row"><button class="primary" data-act="create">POST /workflows</button></div>
+            <pre class="out" data-out></pre>`,
+          wire(el) {
+            el.querySelector("[data-wf]").value = EXAMPLE_WF;
+            const out = el.querySelector("[data-out]");
+            el.querySelector('[data-act=create]').onclick = async () => {
+              const body = parseJSON(el.querySelector("[data-wf]").value, null);
+              if (!body) return show(out, "Invalid JSON");
+              const r = await api("POST", "/workflows", body);
+              if (r.ok) { state.workflowId = r.data.data.workflow.id; state.versionId = r.data.data.version.id; syncIds(); }
+              show(out, r.data);
+            };
+          },
+        },
+        {
+          title: "Workflow ops",
+          html: `
+            <div class="row"><input data-bind="workflowId" placeholder="workflowId" /><input data-bind="versionId" placeholder="versionId" /></div>
+            <div class="row">
+              <button data-act="validate">Validate</button>
+              <button data-act="activate">Activate</button>
+              <button data-act="get">Get</button>
+              <button data-act="versions">Versions</button>
+              <button data-act="list">List all</button>
+            </div>
+            <label>execute input (JSON)</label>
+            <textarea data-input rows="3">{ "name": "Ada" }</textarea>
+            <div class="row"><button class="primary" data-act="execute">Execute</button></div>
+            <pre class="out" data-out></pre>`,
+          wire(el) {
+            const out = el.querySelector("[data-out]");
+            const wf = () => el.querySelector('[data-bind=workflowId]').value.trim();
+            const ver = () => el.querySelector('[data-bind=versionId]').value.trim();
+            el.querySelector('[data-act=validate]').onclick = async () => show(out, (await api("POST", "/workflows/" + wf() + "/validate")).data);
+            el.querySelector('[data-act=activate]').onclick = async () => show(out, (await api("POST", "/workflows/" + wf() + "/activate", { versionId: ver() })).data);
+            el.querySelector('[data-act=get]').onclick = async () => show(out, (await api("GET", "/workflows/" + wf())).data);
+            el.querySelector('[data-act=versions]').onclick = async () => show(out, (await api("GET", "/workflows/" + wf() + "/versions")).data);
+            el.querySelector('[data-act=list]').onclick = async () => show(out, (await api("GET", "/workflows")).data);
+            el.querySelector('[data-act=execute]').onclick = async () => {
+              const input = parseJSON(el.querySelector("[data-input]").value, {});
+              const r = await api("POST", "/workflows/" + wf() + "/execute", { input });
+              if (r.ok) { state.runId = r.data.data.runId; syncIds(); }
+              show(out, r.data);
+            };
+          },
+        },
+        {
+          title: "Test a node",
+          html: `
+            <div class="row"><input data-bind="workflowId" placeholder="workflowId" /><input data-node placeholder="nodeId (e.g. ai)" /></div>
+            <label>sample input (JSON)</label>
+            <textarea data-sample rows="3">{ "name": "Ada" }</textarea>
+            <div class="row"><label><input type="checkbox" data-dry checked /> dryRun</label><button class="primary" data-act="test">test-node</button></div>
+            <pre class="out" data-out></pre>`,
+          wire(el) {
+            const out = el.querySelector("[data-out]");
+            el.querySelector('[data-act=test]').onclick = async () => {
+              const body = { nodeId: el.querySelector("[data-node]").value.trim(), sampleInput: parseJSON(el.querySelector("[data-sample]").value, {}), dryRun: el.querySelector("[data-dry]").checked };
+              show(out, (await api("POST", "/workflows/" + el.querySelector('[data-bind=workflowId]').value.trim() + "/test-node", body)).data);
+            };
+          },
+        },
+        {
+          title: "Runs & metrics",
+          html: `
+            <div class="row"><button data-act="list">List runs</button><button data-act="metrics">Metrics</button></div>
+            <div class="row"><input data-bind="runId" placeholder="runId" /><button data-act="get">Get run</button></div>
+            <pre class="out" data-out></pre>`,
+          wire(el) {
+            const out = el.querySelector("[data-out]");
+            el.querySelector('[data-act=list]').onclick = async () => show(out, (await api("GET", "/runs")).data);
+            el.querySelector('[data-act=metrics]').onclick = async () => show(out, (await api("GET", "/metrics")).data);
+            el.querySelector('[data-act=get]').onclick = async () => show(out, (await api("GET", "/runs/" + el.querySelector('[data-bind=runId]').value.trim())).data);
+          },
+        },
+        {
+          title: "Triggers: events & subscriptions",
+          html: `
+            <div class="row"><input data-etype placeholder="eventType" value="app.installed" /><input data-bind="workflowId" placeholder="workflowId" /></div>
+            <div class="row"><button data-act="subscribe">Create subscription</button></div>
+            <label>event payload (JSON)</label>
+            <textarea data-payload rows="3">{ "name": "Ada" }</textarea>
+            <div class="row"><button class="primary" data-act="emit">POST /events</button></div>
+            <pre class="out" data-out></pre>`,
+          wire(el) {
+            const out = el.querySelector("[data-out]");
+            el.querySelector('[data-act=subscribe]').onclick = async () =>
+              show(out, (await api("POST", "/subscriptions", { eventType: el.querySelector("[data-etype]").value.trim(), workflowId: el.querySelector('[data-bind=workflowId]').value.trim() })).data);
+            el.querySelector('[data-act=emit]').onclick = async () =>
+              show(out, (await api("POST", "/events", { type: el.querySelector("[data-etype]").value.trim(), payload: parseJSON(el.querySelector("[data-payload]").value, {}) })).data);
+          },
+        },
+        {
+          title: "Credentials",
+          html: `
+            <div class="row"><input data-ctype placeholder="type (openrouter/smtp/...)" value="openrouter" /></div>
+            <label>secret (JSON)</label>
+            <textarea data-secret rows="2">{ "apiKey": "sk-or-..." }</textarea>
+            <div class="row"><button class="primary" data-act="create">Create</button><button data-act="list">List</button></div>
+            <div class="row"><input data-cid placeholder="credentialId" /><button data-act="del">Delete</button></div>
+            <pre class="out" data-out></pre>`,
+          wire(el) {
+            const out = el.querySelector("[data-out]");
+            el.querySelector('[data-act=create]').onclick = async () =>
+              show(out, (await api("POST", "/credentials", { type: el.querySelector("[data-ctype]").value.trim(), secret: parseJSON(el.querySelector("[data-secret]").value, {}) })).data);
+            el.querySelector('[data-act=list]').onclick = async () => show(out, (await api("GET", "/credentials")).data);
+            el.querySelector('[data-act=del]').onclick = async () => show(out, (await api("DELETE", "/credentials/" + el.querySelector("[data-cid]").value.trim())).data);
+          },
+        },
+        {
+          title: "Approvals",
+          html: `
+            <div class="row"><input data-eid placeholder="eventId (from run/alert)" /></div>
+            <div class="row"><label><input type="checkbox" data-approved checked /> approved</label><button class="primary" data-act="approve">POST /approvals</button></div>
+            <pre class="out" data-out></pre>
+            <p class="hint">Local mode auto-approves; this matters in qstash mode.</p>`,
+          wire(el) {
+            const out = el.querySelector("[data-out]");
+            el.querySelector('[data-act=approve]').onclick = async () =>
+              show(out, (await api("POST", "/approvals", { eventId: el.querySelector("[data-eid]").value.trim(), approved: el.querySelector("[data-approved]").checked })).data);
+          },
+        },
+        {
+          title: "API keys",
+          html: `
+            <div class="row"><input data-name placeholder="key name" value="dev-key" /><button data-act="create">Create</button><button data-act="list">List</button></div>
+            <pre class="out" data-out></pre>
+            <p class="hint">Paste a returned key into the "api key" field up top to test real auth.</p>`,
+          wire(el) {
+            const out = el.querySelector("[data-out]");
+            el.querySelector('[data-act=create]').onclick = async () => show(out, (await api("POST", "/api-keys", { name: el.querySelector("[data-name]").value.trim() })).data);
+            el.querySelector('[data-act=list]').onclick = async () => show(out, (await api("GET", "/api-keys")).data);
+          },
+        },
+      ];
+
+      const main = $("main");
+      for (const c of cards) {
+        const el = document.createElement("section");
+        el.className = "card";
+        el.innerHTML = '<h2>' + c.title + '</h2><div class="body">' + c.html + "</div>";
+        main.appendChild(el);
+        c.wire(el);
+      }
+      syncIds();
+    </script>
+  </body>
+</html>
