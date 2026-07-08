@@ -88,13 +88,53 @@ export function validateGraph(input: GraphInput): ValidationResult {
     }
   }
 
-  // Orphans: non-trigger nodes with no inbound edge are unreachable
-  const hasInbound = new Set(edges.map((e) => e.to.nodeId));
+  // Adjacency (from → [to]) for reachability and cycle checks.
+  const adjacency = new Map<string, string[]>();
+  for (const e of edges) {
+    const list = adjacency.get(e.from.nodeId) ?? [];
+    list.push(e.to.nodeId);
+    adjacency.set(e.from.nodeId, list);
+  }
+
+  // Orphans: every non-trigger node must be REACHABLE from a trigger node
+  // (a disconnected cluster whose nodes point at each other has inbound edges
+  // but is still unreachable).
+  const reachable = new Set<string>();
+  const queue = triggerNodes.map((n) => n.id);
+  while (queue.length > 0) {
+    const id = queue.shift();
+    if (id === undefined || reachable.has(id)) continue;
+    reachable.add(id);
+    for (const next of adjacency.get(id) ?? []) queue.push(next);
+  }
   for (const n of nodes) {
     if (getNode(n.type)?.kind === "trigger") continue;
-    if (!hasInbound.has(n.id)) {
-      errors.push({ code: "orphan_node", message: `Node "${n.id}" is not reachable (no inbound edge)`, nodeId: n.id });
+    if (!reachable.has(n.id)) {
+      errors.push({ code: "orphan_node", message: `Node "${n.id}" is not reachable from the trigger`, nodeId: n.id });
     }
+  }
+
+  // Cycles: a structural back-edge is invalid. `control.loop` iterates via its
+  // each/done ports at runtime and is NOT a graph cycle, so this stays correct.
+  const WHITE = 0;
+  const GRAY = 1;
+  const BLACK = 2;
+  const color = new Map<string, number>(nodes.map((n) => [n.id, WHITE]));
+  const cycleNodes = new Set<string>();
+  const visit = (id: string): void => {
+    color.set(id, GRAY);
+    for (const next of adjacency.get(id) ?? []) {
+      const c = color.get(next) ?? WHITE;
+      if (c === GRAY) cycleNodes.add(next);
+      else if (c === WHITE) visit(next);
+    }
+    color.set(id, BLACK);
+  };
+  for (const n of nodes) {
+    if (color.get(n.id) === WHITE) visit(n.id);
+  }
+  for (const id of cycleNodes) {
+    errors.push({ code: "cycle", message: `Workflow contains a cycle through node "${id}"`, nodeId: id });
   }
 
   return { ok: errors.length === 0, errors };

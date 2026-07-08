@@ -19,6 +19,7 @@ export interface WorkflowFilter {
   status?: WorkflowStatus;
   q?: string;
   limit?: number;
+  cursor?: string; // exclusive: return items with id < cursor (ids sort by time)
 }
 
 export interface WorkflowRepo {

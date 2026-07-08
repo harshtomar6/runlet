@@ -1,4 +1,4 @@
-import { and, desc, eq, ilike } from "drizzle-orm";
+import { and, desc, eq, ilike, lt } from "drizzle-orm";
 import type {
   TriggerConfig,
   Workflow,
@@ -24,12 +24,14 @@ export class PostgresWorkflowRepo implements WorkflowRepo {
     const conds = [eq(workflows.ownerId, ownerId)];
     if (filter?.status) conds.push(eq(workflows.status, filter.status));
     if (filter?.q) conds.push(ilike(workflows.name, `%${filter.q}%`));
+    if (filter?.cursor) conds.push(lt(workflows.id, filter.cursor));
 
+    // Order by id (ULID → time-sortable) so the cursor is stable.
     const rows = await db()
       .select()
       .from(workflows)
       .where(and(...conds))
-      .orderBy(desc(workflows.createdAt))
+      .orderBy(desc(workflows.id))
       .limit(filter?.limit ?? 50);
 
     return rows.map(toWorkflow);
