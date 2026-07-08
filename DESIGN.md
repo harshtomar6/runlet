@@ -404,9 +404,13 @@ REST, JSON, ULID paths. Auth via API key / JWT per owner. All list endpoints pag
 
 ### Catalog
 ```
-GET  /node-types                 → [{ type, label, category, kind, inputSchema(JSONSchema), outputs, credentials }]
+GET  /node-types                 → [{ type, app, label, category, kind, inputSchema(JSONSchema), outputs, credentials }]
+GET  /node-types?grouped=true    → [{ app, label, nodes: [ …entries ] }]   (n8n-style integration grouping)
 GET  /node-types/:type
 ```
+Each node declares an optional `app` (integration id, e.g. "google-sheets"); it
+defaults to the `type` prefix. `?grouped=true` buckets node types by `app` so a
+UI can show one "Google Sheets" entry that expands into its actions.
 
 ### Workflows & versions
 ```

@@ -1,13 +1,20 @@
 import { Hono } from "hono";
 import { ApiError } from "../../errors";
-import { getNode, listNodes, toCatalogEntry } from "../../nodes";
+import { getNode, listNodes, toCatalogEntry, toCatalogGroups } from "../../nodes";
 import { ok } from "../lib/respond";
 import type { AppEnv } from "../types";
 
 /** Public catalog: lets any UI render a node palette + config forms. */
 export const nodeTypes = new Hono<AppEnv>();
 
-nodeTypes.get("/", (c) => ok(c, listNodes().map(toCatalogEntry)));
+// Flat list by default; `?grouped=true` groups by integration/app (n8n-style).
+nodeTypes.get("/", (c) => {
+  const grouped = c.req.query("grouped");
+  if (grouped === "true" || grouped === "1") {
+    return ok(c, toCatalogGroups(listNodes()));
+  }
+  return ok(c, listNodes().map(toCatalogEntry));
+});
 
 nodeTypes.get("/:type", (c) => {
   const type = c.req.param("type");
