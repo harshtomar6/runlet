@@ -23,6 +23,15 @@ const EnvSchema = z.object({
   CREDENTIAL_ENC_KEY: z.string().optional(),
 
   ENGINE_URL: z.string().url().optional(),
+
+  // Execution dispatch: "local" runs the interpreter inline (dev/no infra);
+  // "qstash" enqueues a durable run to the engine endpoint.
+  DISPATCH_MODE: z.enum(["local", "qstash"]).default("local"),
+  QSTASH_TOKEN: z.string().optional(),
+
+  // Email provider (Resend) — optional; without it, email.send is a dry-run.
+  RESEND_API_KEY: z.string().optional(),
+  EMAIL_FROM: z.string().default("automations@example.com"),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

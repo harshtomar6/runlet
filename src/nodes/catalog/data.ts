@@ -11,6 +11,9 @@ export const dataSet = defineNode({
     fields: z.record(z.unknown()),
   }),
   outputs: ["out"],
+  execute: async ({ inputs }) => {
+    return { data: (inputs.fields ?? {}) as Record<string, unknown>, port: "out" };
+  },
 });
 
 export const dataNodes = [dataSet];
