@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Connectors, HttpConnector, HttpInput, SlackConnector, SlackInput } from "./index";
 import { ResendEmailConnector } from "./email";
+import { NodemailerSmtpConnector } from "./smtp";
 import { safeFetch } from "./ssrf";
 import type { DecryptedSecret } from "../domain/types";
 
@@ -41,6 +42,7 @@ export function defaultConnectors(): Connectors {
     email: new ResendEmailConnector(),
     slack: new WebhookSlackConnector(),
     http: new FetchHttpConnector(),
+    smtp: new NodemailerSmtpConnector(),
   };
 }
 
@@ -60,6 +62,11 @@ export function dryRunConnectors(): Connectors {
     http: {
       async request() {
         return { status: 200, body: { dryRun: true } };
+      },
+    },
+    smtp: {
+      async send() {
+        return { messageId: `dry_${randomUUID()}`, dryRun: true };
       },
     },
   };
