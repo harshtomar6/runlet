@@ -18,6 +18,16 @@ export interface NodeRuntime {
    *  Use it in idempotency keys so retries of the SAME step dedup, while
    *  distinct loop iterations do not. */
   stepId: string;
+  /**
+   * Available only to `durable` nodes: run a checkpointed sub-step (each round
+   * of an agent, each tool call). Falls back to inline when absent.
+   */
+  step?: <T>(subId: string, fn: () => Promise<T>) => Promise<T>;
+  /**
+   * Available only to `durable` nodes: suspend until an external event
+   * (approval/callback) or timeout. Absent outside durable execution.
+   */
+  waitForEvent?: (eventId: string, timeoutSec: number) => Promise<{ timedOut: boolean; data: unknown }>;
 }
 
 export interface NodeExecArgs {
@@ -52,6 +62,13 @@ export interface NodeDefinition {
    * Lets a UI show one "Google Sheets" entry that expands into its actions.
    */
   app?: string;
+  /**
+   * When true, the interpreter does NOT wrap `execute` in a single durable step;
+   * instead the node manages its own steps via `rt.step` / `rt.waitForEvent`
+   * (each checkpointed at top level). Use for long/looping/awaiting nodes
+   * (`ai.agent`, `control.approval`).
+   */
+  durable?: boolean;
   /** Runtime behavior. Absent for pass-through trigger nodes and unimplemented types. */
   execute?: (args: NodeExecArgs) => Promise<NodeOutcome>;
 }

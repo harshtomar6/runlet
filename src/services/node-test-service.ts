@@ -65,6 +65,9 @@ export class NodeTestService {
         runId: `test_${newId()}`,
         workflowRunId: `test_${newId()}`,
         stepId: `test_${newId()}:${node.id}`, // unique per invocation (repeatable tests)
+        // Durable capabilities run inline under test-node; approval auto-approves.
+        step: (_subId, fn) => fn(),
+        waitForEvent: async () => ({ timedOut: false, data: { approved: true, auto: true } }),
       },
     });
   }

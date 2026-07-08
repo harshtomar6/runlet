@@ -182,9 +182,11 @@ export const aiAgent = defineNode({
   }),
   outputs: ["success", "error"],
   credentials: ["openrouter"],
+  durable: true, // each round + tool call is a checkpointed sub-step
   execute: async ({ inputs, params, rt }) => {
     const toolConfigs = (inputs.tools ?? []) as Array<{ tool: string; credentialId?: string }>;
     const maxSteps = (inputs.maxSteps as number | undefined) ?? 6;
+    const step = rt.step ?? (<T>(_id: string, fn: () => Promise<T>) => fn()); // inline fallback
 
     // Build tool schemas from the allowlisted nodes (schema = node inputSchema).
     const bySanitized = new Map<string, { nodeType: string; credentialId?: string }>();
@@ -209,20 +211,25 @@ export const aiAgent = defineNode({
     const trace: Array<{ tool: string; args: unknown; result: string }> = [];
     let text = "";
 
-    for (let step = 0; step < maxSteps; step++) {
-      const res = await rt.connectors.ai.chat(creds, {
-        model: String(inputs.model),
-        messages,
-        tools: toolDefs.length > 0 ? toolDefs : undefined,
-      });
+    for (let round = 0; round < maxSteps; round++) {
+      // Each LLM round is its own durable step (resumable, not re-run on retry).
+      const res = await step(`round-${round}`, () =>
+        rt.connectors.ai.chat(creds, {
+          model: String(inputs.model),
+          messages,
+          tools: toolDefs.length > 0 ? toolDefs : undefined,
+        }),
+      );
       messages.push(res.message);
       if (res.toolCalls.length === 0) {
         text = res.content;
         break;
       }
-      for (const callIdx in res.toolCalls) {
-        const call = res.toolCalls[callIdx]!;
-        const content = await runTool(bySanitized, call, rt, `${rt.stepId}:tool:${step}:${call.id}`);
+      for (const call of res.toolCalls) {
+        // Each tool call is its own durable step too.
+        const content = await step(`tool-${round}-${call.id}`, () =>
+          runTool(bySanitized, call, rt, `${rt.stepId}:tool:${round}:${call.id}`),
+        );
         trace.push({ tool: bySanitized.get(call.name)?.nodeType ?? call.name, args: call.args, result: content });
         messages.push({ role: "tool", tool_call_id: call.id, content });
       }
