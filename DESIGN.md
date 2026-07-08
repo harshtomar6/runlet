@@ -349,7 +349,9 @@ Implemented:
 - **AI:** `ai.complete` (with optional conversation `memory`), `ai.image`, `ai.transcribe`, `ai.tts`, `ai.agent` (bounded tool-calling loop over allowlisted catalog nodes) — all via OpenRouter (one `openrouter` credential, model-dependent). Video generation isn't offered by OpenRouter → needs a dedicated provider.
 
 **Memory** is a `ConversationStore` port (Redis list per key; in-memory for tests), owner-scoped by key; `ai.complete { memory: { key, window } }` loads prior turns and appends each turn. **Tools** reuse the node registry: an `ai.agent` tool's JSON-Schema *is* the target node's `inputSchema` and its executor *is* the node's `execute` — the model can only call allowlisted node types, bounded by `maxSteps`, each tool run getting a unique `stepId`.
-- **Control:** `control.wait`, `control.if`, `control.switch`, `control.loop`, `control.filter`
+
+**Durable nodes** (`durable: true`, e.g. `ai.agent`, `control.approval`) are *not* wrapped in a single step; they own their sub-steps via `rt.step(subId, fn)` and `rt.waitForEvent(eventId, timeoutSec)`, each checkpointed at the top level (so a long agent loop / a multi-day approval wait resumes rather than re-running). **Human approval**: `control.approval` announces (Slack/log) a stable `eventId` then suspends via `waitForEvent`; a decision is delivered with `POST /approvals { eventId, approved, data }` (QStash `notify` in prod; local mode auto-approves). Routes to `approved` / `rejected`.
+- **Control:** `control.wait`, `control.if`, `control.switch`, `control.loop`, `control.filter`, `control.approval` (human-in-the-loop; durable)
 - **Data:** `data.set`, `data.transform`
 - **Utility:** `util.log`
 

@@ -32,6 +32,10 @@ export const engineRoute = serve<EnginePayload>(
       workflowRunId: context.workflowRunId,
       run: (id, fn) => context.run(id, fn),
       sleep: (id, seconds) => context.sleep(id, seconds),
+      waitForEvent: async (id, eventId, timeoutSec) => {
+        const r = await context.waitForEvent(id, eventId, { timeout: timeoutSec });
+        return { timedOut: r.timeout, data: r.eventData };
+      },
     };
 
     await runWorkflow(exec, {

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { sendAlert } from "../../observability/alert";
 import { defineNode } from "../define";
 
 export const wait = defineNode({
@@ -82,4 +83,41 @@ export const filterNode = defineNode({
   },
 });
 
-export const controlNodes = [wait, ifNode, loop, switchNode, filterNode];
+export const approvalNode = defineNode({
+  type: "control.approval",
+  app: "control",
+  kind: "control",
+  category: "Control",
+  label: "Human Approval",
+  description:
+    "Pauses until a human approves/rejects (POST /approvals) or the timeout elapses. Routes to `approved` / `rejected`. Durable in qstash mode; auto-approves in local mode.",
+  inputSchema: z.object({
+    message: z.string().optional(),
+    timeoutSec: z.number().int().positive().max(2_592_000).default(86_400), // ≤30d, default 1d
+  }),
+  outputs: ["approved", "rejected"],
+  durable: true,
+  execute: async ({ inputs, rt }) => {
+    const eventId = `approval:${rt.runId}:${rt.stepId}`;
+    const timeoutSec = (inputs.timeoutSec as number | undefined) ?? 86_400;
+
+    // Announce so a human/UI can act (POST /approvals with this eventId).
+    await sendAlert("Approval requested", {
+      eventId,
+      runId: rt.runId,
+      message: (inputs.message as string | undefined) ?? "",
+    });
+
+    const wait =
+      rt.waitForEvent ?? (async () => ({ timedOut: false, data: { approved: true, auto: true } }));
+    const res = await wait(eventId, timeoutSec);
+
+    const approved = !res.timedOut && (res.data as { approved?: boolean } | null)?.approved !== false;
+    return {
+      data: { eventId, approved, timedOut: res.timedOut, decision: res.data ?? null },
+      port: approved ? "approved" : "rejected",
+    };
+  },
+});
+
+export const controlNodes = [wait, ifNode, loop, switchNode, filterNode, approvalNode];

@@ -1,7 +1,7 @@
 import { newId } from "../domain/ids";
-import type { Edge, RunEvent, WorkflowVersion } from "../domain/types";
+import type { Edge, Node, RunEvent, WorkflowVersion } from "../domain/types";
 import { getNode } from "../nodes";
-import type { NodeRuntime } from "../nodes/define";
+import type { NodeDefinition, NodeOutcome, NodeRuntime } from "../nodes/define";
 import type { ExecutionContext } from "./context";
 import { parseDuration } from "./duration";
 import { resolveInputs, resolveValue } from "./expr";
@@ -99,39 +99,77 @@ export async function runWorkflow(exec: ExecutionContext, p: RunParams): Promise
       const inputs = await resolveInputs(node.params, scope(locals));
       const schema = def2.inputSchema;
       const executeFn = def2.execute;
-      // stepId is iteration-scoped (via prefix), so idempotency keys differ per
-      // loop iteration while retries of the same step reuse it.
-      const rt: NodeRuntime = {
-        ...p.rt,
-        runId: p.runId,
-        workflowRunId: exec.workflowRunId,
-        stepId: `${prefix}node:${id}`,
-      };
-      const outcome = await exec.run(`${prefix}node:${id}`, async () => {
-        await sink.append(evt(p.runId, "node.started", { nodeId: id, input: inputs }));
-        try {
-          // Validate resolved inputs before running (DESIGN §8) — fail fast on a
-          // missing/wrong-typed value instead of silently coercing (e.g. "undefined").
-          const parsed = schema.safeParse(inputs);
-          if (!parsed.success) {
-            throw new Error(`Invalid inputs for node "${id}" (${node.type}): ${parsed.error.message}`);
-          }
-          const result = await executeFn({
-            inputs: parsed.data as Record<string, unknown>,
-            params: node.params,
-            rt,
-          });
-          await sink.append(evt(p.runId, "node.executed", { nodeId: id, output: result.data ?? null }));
-          return result;
-        } catch (err) {
-          await sink.append(evt(p.runId, "node.failed", { nodeId: id, error: serializeError(err) }));
-          throw err;
-        }
-      });
+      const baseStepId = `${prefix}node:${id}`;
+      const outcome = def2.durable
+        ? await runDurableNode(baseStepId, inputs, executeFn, schema, id, node)
+        : await runStepNode(baseStepId, inputs, executeFn, schema, id, node);
 
       outputs[id] = outcome.data ?? null;
       const port = outcome.port ?? def2.outputs[0] ?? "out";
       frontier.push(...successors(def.edges, id, port));
+    }
+  }
+
+  // Normal node: the whole execution is ONE durable step.
+  async function runStepNode(
+    baseStepId: string,
+    inputs: Record<string, unknown>,
+    executeFn: NonNullable<NodeDefinition["execute"]>,
+    schema: NodeDefinition["inputSchema"],
+    id: string,
+    node: Node,
+  ): Promise<NodeOutcome> {
+    const rt: NodeRuntime = { ...p.rt, runId: p.runId, workflowRunId: exec.workflowRunId, stepId: baseStepId };
+    return exec.run(baseStepId, async () => {
+      await sink.append(evt(p.runId, "node.started", { nodeId: id, input: inputs }));
+      try {
+        const parsed = schema.safeParse(inputs);
+        if (!parsed.success) throw new Error(`Invalid inputs for node "${id}" (${node.type}): ${parsed.error.message}`);
+        const result = await executeFn({ inputs: parsed.data as Record<string, unknown>, params: node.params, rt });
+        await sink.append(evt(p.runId, "node.executed", { nodeId: id, output: result.data ?? null }));
+        return result;
+      } catch (err) {
+        await sink.append(evt(p.runId, "node.failed", { nodeId: id, error: serializeError(err) }));
+        throw err;
+      }
+    });
+  }
+
+  // Durable node: NOT wrapped in a single step; it owns its sub-steps via
+  // rt.step / rt.waitForEvent (each checkpointed at top level). Events are each
+  // written in their own step so they don't duplicate on replay.
+  async function runDurableNode(
+    baseStepId: string,
+    inputs: Record<string, unknown>,
+    executeFn: NonNullable<NodeDefinition["execute"]>,
+    schema: NodeDefinition["inputSchema"],
+    id: string,
+    node: Node,
+  ): Promise<NodeOutcome> {
+    const rt: NodeRuntime = {
+      ...p.rt,
+      runId: p.runId,
+      workflowRunId: exec.workflowRunId,
+      stepId: baseStepId,
+      step: (subId, fn) => exec.run(`${baseStepId}:${subId}`, fn),
+      waitForEvent: (eventId, timeoutSec) => exec.waitForEvent(`${baseStepId}:wait`, eventId, timeoutSec),
+    };
+    await exec.run(`${baseStepId}:started`, () =>
+      sink.append(evt(p.runId, "node.started", { nodeId: id, input: inputs })),
+    );
+    try {
+      const parsed = schema.safeParse(inputs);
+      if (!parsed.success) throw new Error(`Invalid inputs for node "${id}" (${node.type}): ${parsed.error.message}`);
+      const result = await executeFn({ inputs: parsed.data as Record<string, unknown>, params: node.params, rt });
+      await exec.run(`${baseStepId}:executed`, () =>
+        sink.append(evt(p.runId, "node.executed", { nodeId: id, output: result.data ?? null })),
+      );
+      return result;
+    } catch (err) {
+      await exec.run(`${baseStepId}:failed`, () =>
+        sink.append(evt(p.runId, "node.failed", { nodeId: id, error: serializeError(err) })),
+      );
+      throw err;
     }
   }
 }
