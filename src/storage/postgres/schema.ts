@@ -50,6 +50,7 @@ export const runs = pgTable(
   "runs",
   {
     id: text("id").primaryKey(),
+    ownerId: text("owner_id").notNull().default(""),
     workflowId: text("workflow_id").notNull(),
     versionId: text("version_id").notNull(),
     status: text("status").notNull().default("running"),
@@ -60,6 +61,7 @@ export const runs = pgTable(
   },
   (t) => ({
     byWorkflow: index("runs_workflow_idx").on(t.workflowId),
+    byOwner: index("runs_owner_idx").on(t.ownerId),
     byStatus: index("runs_status_idx").on(t.status),
   }),
 );
@@ -89,14 +91,33 @@ export const credentials = pgTable("credentials", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const apiKeys = pgTable(
+  "api_keys",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id").notNull(),
+    name: text("name").notNull(),
+    prefix: text("prefix").notNull(),
+    keyHash: text("key_hash").notNull().unique(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (t) => ({
+    byOwner: index("api_keys_owner_idx").on(t.ownerId),
+  }),
+);
+
 export const eventSubscriptions = pgTable(
   "event_subscriptions",
   {
     id: text("id").primaryKey(),
+    ownerId: text("owner_id").notNull(),
     eventType: text("event_type").notNull(),
     workflowId: text("workflow_id").notNull(),
   },
   (t) => ({
-    byEventType: index("subs_event_type_idx").on(t.eventType),
+    byOwnerEventType: index("subs_owner_event_type_idx").on(t.ownerId, t.eventType),
+    byWorkflow: index("subs_workflow_idx").on(t.workflowId),
   }),
 );

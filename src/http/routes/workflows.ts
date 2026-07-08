@@ -2,7 +2,10 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { ActivateSchema, CreateWorkflowSchema, UpdateWorkflowSchema } from "../../domain/schemas";
 import { ApiError } from "../../errors";
+import { defaultConnectors } from "../../connectors/default";
 import { dispatcher } from "../../engine/dispatch";
+import { scheduleManager } from "../../engine/schedule";
+import { NodeTestService } from "../../services/node-test-service";
 import { WorkflowService } from "../../services/workflow-service";
 import { store } from "../../storage/factory";
 import { auth } from "../middleware/auth";
@@ -10,7 +13,15 @@ import { parseBody } from "../lib/parse";
 import { ok } from "../lib/respond";
 import type { AppEnv } from "../types";
 
-const service = new WorkflowService(store);
+const service = new WorkflowService(store, scheduleManager);
+const nodeTests = new NodeTestService(store, defaultConnectors());
+
+const TestNodeSchema = z.object({
+  nodeId: z.string().min(1),
+  sampleInput: z.unknown().optional(),
+  versionId: z.string().optional(),
+  dryRun: z.boolean().optional(), // default true — real side effects only on explicit opt-in
+});
 
 const StatusSchema = z.enum(["draft", "active", "disabled"]);
 const DEFAULT_LIMIT = 50;
@@ -74,6 +85,12 @@ workflows.get("/:id/versions", async (c) => {
   return ok(c, page, nextCursor ? { cursor: nextCursor } : {});
 });
 
+workflows.post("/:id/test-node", async (c) => {
+  const input = await parseBody(c, TestNodeSchema);
+  const outcome = await nodeTests.testNode(c.get("ownerId"), c.req.param("id"), input);
+  return ok(c, outcome);
+});
+
 workflows.post("/:id/validate", async (c) => {
   const versionId = c.req.query("versionId") ?? undefined;
   const result = await service.validate(c.get("ownerId"), c.req.param("id"), versionId);
@@ -96,7 +113,8 @@ workflows.post("/:id/execute", async (c) => {
   const id = c.req.param("id");
   const raw = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
   const trigger = "input" in raw ? raw.input : raw;
-  const versionId = await service.executableVersionId(c.get("ownerId"), id);
-  const { runId } = await dispatcher.start({ workflowId: id, versionId, trigger });
+  const ownerId = c.get("ownerId");
+  const versionId = await service.executableVersionId(ownerId, id);
+  const { runId } = await dispatcher.start({ ownerId, workflowId: id, versionId, trigger });
   return ok(c, { runId }, {}, 202);
 });

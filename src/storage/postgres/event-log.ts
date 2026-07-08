@@ -1,6 +1,6 @@
-import { and, count, desc, eq, gte, lte } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, lte, type SQL } from "drizzle-orm";
 import type { Run, RunEvent, RunStatus } from "../../domain/types";
-import type { EventLog, RunQuery, RunSummary } from "../../ports";
+import type { EventLog, RunMetrics, RunQuery, RunSummary } from "../../ports";
 import { NotFoundError } from "../../ports/errors";
 import { db } from "./client";
 import { runEvents, runs } from "./schema";
@@ -12,6 +12,7 @@ export class PostgresEventLog implements EventLog {
   async createRun(r: Run): Promise<void> {
     await db().insert(runs).values({
       id: r.id,
+      ownerId: r.ownerId,
       workflowId: r.workflowId,
       versionId: r.versionId,
       status: r.status,
@@ -59,12 +60,36 @@ export class PostgresEventLog implements EventLog {
     return rows.map(toEvent);
   }
 
+  async metrics(f: RunQuery): Promise<RunMetrics> {
+    const conds = runConds(f);
+    const where = conds.length ? and(...conds) : undefined;
+
+    // Counts by status over ALL matching runs (SQL GROUP BY — not a capped fetch).
+    const statusRows = await db()
+      .select({ status: runs.status, c: count() })
+      .from(runs)
+      .where(where)
+      .groupBy(runs.status);
+
+    const byStatus: Record<string, number> = {};
+    let total = 0;
+    for (const r of statusRows) {
+      byStatus[r.status] = Number(r.c);
+      total += Number(r.c);
+    }
+
+    // Total executed steps across matching runs (single joined aggregate).
+    const [agg] = await db()
+      .select({ c: count() })
+      .from(runEvents)
+      .innerJoin(runs, eq(runEvents.runId, runs.id))
+      .where(and(eq(runEvents.type, "node.executed"), ...conds));
+
+    return { total, byStatus, totalSteps: Number(agg?.c ?? 0) };
+  }
+
   async query(f: RunQuery): Promise<RunSummary[]> {
-    const conds = [];
-    if (f.workflowId) conds.push(eq(runs.workflowId, f.workflowId));
-    if (f.status) conds.push(eq(runs.status, f.status));
-    if (f.from) conds.push(gte(runs.startedAt, f.from));
-    if (f.to) conds.push(lte(runs.startedAt, f.to));
+    const conds = runConds(f);
 
     const rows = await db()
       .select()
@@ -73,29 +98,42 @@ export class PostgresEventLog implements EventLog {
       .orderBy(desc(runs.startedAt))
       .limit(f.limit ?? 200);
 
-    // TODO(M5): replace the per-run count with a single grouped aggregate.
-    const summaries: RunSummary[] = [];
-    for (const r of rows) {
-      const [agg] = await db()
-        .select({ c: count() })
-        .from(runEvents)
-        .where(and(eq(runEvents.runId, r.id), eq(runEvents.type, "node.executed")));
-      summaries.push({
-        runId: r.id,
-        workflowId: r.workflowId,
-        status: r.status as RunStatus,
-        startedAt: r.startedAt,
-        finishedAt: r.finishedAt,
-        stepCount: Number(agg?.c ?? 0),
-      });
-    }
-    return summaries;
+    if (rows.length === 0) return [];
+
+    // Single grouped aggregate for step counts across all matched runs.
+    const runIds = rows.map((r) => r.id);
+    const counts = await db()
+      .select({ runId: runEvents.runId, c: count() })
+      .from(runEvents)
+      .where(and(inArray(runEvents.runId, runIds), eq(runEvents.type, "node.executed")))
+      .groupBy(runEvents.runId);
+    const stepByRun = new Map(counts.map((c) => [c.runId, Number(c.c)]));
+
+    return rows.map((r) => ({
+      runId: r.id,
+      workflowId: r.workflowId,
+      status: r.status as RunStatus,
+      startedAt: r.startedAt,
+      finishedAt: r.finishedAt,
+      stepCount: stepByRun.get(r.id) ?? 0,
+    }));
   }
+}
+
+function runConds(f: RunQuery): SQL[] {
+  const conds: SQL[] = [];
+  if (f.ownerId) conds.push(eq(runs.ownerId, f.ownerId));
+  if (f.workflowId) conds.push(eq(runs.workflowId, f.workflowId));
+  if (f.status) conds.push(eq(runs.status, f.status));
+  if (f.from) conds.push(gte(runs.startedAt, f.from));
+  if (f.to) conds.push(lte(runs.startedAt, f.to));
+  return conds;
 }
 
 function toRun(r: RunRow): Run {
   return {
     id: r.id,
+    ownerId: r.ownerId,
     workflowId: r.workflowId,
     versionId: r.versionId,
     status: r.status as RunStatus,

@@ -60,6 +60,7 @@ export type RunStatus = "running" | "succeeded" | "failed" | "cancelled";
 
 export interface Run {
   id: string;
+  ownerId: string;
   workflowId: string;
   versionId: string; // PINNED at start
   status: RunStatus;
@@ -106,6 +107,28 @@ export interface DecryptedSecret {
 
 export interface EventSubscription {
   id: string;
+  ownerId: string;
   eventType: string;
   workflowId: string;
+}
+
+export interface ApiKey {
+  id: string;
+  ownerId: string;
+  name: string;
+  prefix: string; // non-secret display prefix, e.g. "ak_a1b2c3"
+  keyHash: string; // sha256 hex of the full key
+  createdAt: Date;
+  lastUsedAt: Date | null;
+  revokedAt: Date | null;
+}
+
+export interface ApiKeyMeta {
+  id: string;
+  ownerId: string;
+  name: string;
+  prefix: string;
+  createdAt: Date;
+  lastUsedAt: Date | null;
+  revokedAt: Date | null;
 }

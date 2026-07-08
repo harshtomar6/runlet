@@ -1,0 +1,14 @@
+# Cloudflare Workers deployment (experimental — see DEPLOY.md).
+name = "app-automations"
+main = "src/entry/cloudflare.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+DISPATCH_MODE = "qstash"
+DB_DRIVER = "neon"          # postgres.js TCP is unavailable on Workers
+LOG_LEVEL = "info"
+
+# Secrets — set with `wrangler secret put <NAME>`:
+#   DATABASE_URL, UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN,
+#   QSTASH_TOKEN, CREDENTIAL_ENC_KEY, INTERNAL_SECRET, PUBLIC_BASE_URL, ENGINE_URL

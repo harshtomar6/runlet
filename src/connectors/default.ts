@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Connectors, HttpConnector, HttpInput, SlackConnector, SlackInput } from "./index";
 import { ResendEmailConnector } from "./email";
+import { safeFetch } from "./ssrf";
 import type { DecryptedSecret } from "../domain/types";
 
 class WebhookSlackConnector implements SlackConnector {
@@ -18,7 +19,8 @@ class WebhookSlackConnector implements SlackConnector {
 
 class FetchHttpConnector implements HttpConnector {
   async request(input: HttpInput): Promise<{ status: number; body: unknown }> {
-    const res = await fetch(input.url, {
+    // safeFetch validates + pins the IP and re-checks every redirect hop (SSRF).
+    const res = await safeFetch(input.url, {
       method: input.method,
       headers: input.headers,
       body: input.body === undefined ? undefined : JSON.stringify(input.body),

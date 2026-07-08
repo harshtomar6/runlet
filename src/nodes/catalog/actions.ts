@@ -18,8 +18,9 @@ export const emailSend = defineNode({
   execute: async ({ inputs, params, rt }) => {
     const to = String(inputs.to);
     const templateId = String(inputs.templateId);
-    // Idempotent per (run, recipient, template) so retries don't double-send.
-    const idem = `email:${rt.workflowRunId}:${to}:${templateId}`;
+    // Keyed by the durable stepId so retries of the SAME step dedup, but each
+    // loop iteration (distinct stepId) sends — not skipped as a false duplicate.
+    const idem = `email:${rt.stepId}:${to}:${templateId}`;
     if (!(await rt.kv.setNX(idem, "1", 86_400))) {
       return { data: { skipped: true }, port: "success" };
     }

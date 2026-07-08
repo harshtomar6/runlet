@@ -1,48 +1,103 @@
+import jsonata from "jsonata";
+
 /**
- * Minimal expression + templating resolver for M3.
+ * JSONata-powered expression + templating resolver (DESIGN.md §8).
  *
- *  - "{{ path.to.value }}" as an entire string  → the resolved value (any type)
- *  - "hi {{ name }}"                             → interpolated string
- *  - non-string values                          → returned as-is
+ *  - "{{ expr }}" as an entire string  → the evaluated value (any type)
+ *  - "hi {{ name }}"                   → interpolated string
+ *  - objects / arrays                  → resolved deeply
+ *  - other values                      → returned as-is
  *
- * Paths resolve against a scope of { trigger, <nodeId>: <output>, ... }.
- * Replaced by JSONata in M7 (see DESIGN.md §8); the signature stays stable.
+ * `expr` is a JSONata expression evaluated against a scope of
+ * { trigger, <nodeId>: <output>, ... }. Evaluation is sandboxed by JSONata
+ * (no host access) and async.
  */
 export type Scope = Record<string, unknown>;
 
-const FULL = /^\s*\{\{\s*([^}]+?)\s*\}\}\s*$/;
-const PART = /\{\{\s*([^}]+?)\s*\}\}/g;
+const FULL = /^\s*\{\{\s*([\s\S]+?)\s*\}\}\s*$/;
+const PART = /\{\{\s*([\s\S]+?)\s*\}\}/g;
 
-export function resolveValue(value: unknown, scope: Scope): unknown {
-  if (typeof value !== "string") return value;
+/** Per-expression CPU/time budget (DESIGN §8) — bounds a hostile expression. */
+const EVAL_TIMEOUT_MS = 1000;
 
-  const full = value.match(FULL);
-  if (full) return lookup(full[1] ?? "", scope);
-
-  return value.replace(PART, (_m, path: string) => {
-    const v = lookup(path.trim(), scope);
-    return v === undefined || v === null ? "" : String(v);
-  });
+/** Thrown for genuine expression errors (syntax / evaluation), distinct from a
+ *  missing path (which JSONata returns as `undefined`, not an error). */
+export class ExpressionError extends Error {
+  constructor(expr: string, cause: unknown) {
+    super(`Expression failed: "${expr}" — ${cause instanceof Error ? cause.message : String(cause)}`);
+    this.name = "ExpressionError";
+  }
 }
 
-export function resolveInputs(params: Record<string, unknown>, scope: Scope): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(params)) {
-    out[k] = resolveValue(v, scope);
+export async function resolveValue(value: unknown, scope: Scope): Promise<unknown> {
+  if (typeof value === "string") return resolveString(value, scope);
+  if (Array.isArray(value)) return Promise.all(value.map((v) => resolveValue(v, scope)));
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) out[k] = await resolveValue(v, scope);
+    return out;
   }
+  return value;
+}
+
+export async function resolveInputs(
+  params: Record<string, unknown>,
+  scope: Scope,
+): Promise<Record<string, unknown>> {
+  return (await resolveValue(params, scope)) as Record<string, unknown>;
+}
+
+export async function evalCondition(expr: string, scope: Scope): Promise<boolean> {
+  return Boolean(await resolveString(expr, scope));
+}
+
+async function resolveString(value: string, scope: Scope): Promise<unknown> {
+  const full = value.match(FULL);
+  if (full) return evalExpr(full[1] ?? "", scope);
+
+  if (!PART.test(value)) return value;
+  PART.lastIndex = 0;
+
+  let out = "";
+  let last = 0;
+  for (const m of value.matchAll(PART)) {
+    out += value.slice(last, m.index);
+    const v = await evalExpr((m[1] ?? "").trim(), scope);
+    out += v === undefined || v === null ? "" : String(v);
+    last = (m.index ?? 0) + m[0].length;
+  }
+  out += value.slice(last);
   return out;
 }
 
-/** Truthiness of a condition expression (M3: value-based, not a full parser). */
-export function evalCondition(expr: string, scope: Scope): boolean {
-  return Boolean(resolveValue(expr, scope));
+async function evalExpr(expr: string, scope: Scope): Promise<unknown> {
+  // A missing path yields `undefined` (not an error); a syntax/eval failure
+  // throws — surface it as ExpressionError instead of silently returning "".
+  let compiled: ReturnType<typeof jsonata>;
+  try {
+    compiled = jsonata(expr);
+  } catch (err) {
+    throw new ExpressionError(expr, err);
+  }
+  try {
+    return await withTimeout(compiled.evaluate(scope), EVAL_TIMEOUT_MS, expr);
+  } catch (err) {
+    throw new ExpressionError(expr, err);
+  }
 }
 
-function lookup(path: string, scope: Scope): unknown {
-  let cur: unknown = scope;
-  for (const seg of path.split(".")) {
-    if (cur == null || typeof cur !== "object") return undefined;
-    cur = (cur as Record<string, unknown>)[seg];
-  }
-  return cur;
+function withTimeout<T>(p: Promise<T>, ms: number, expr: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`timed out after ${ms}ms: "${expr}"`)), ms);
+    p.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    );
+  });
 }

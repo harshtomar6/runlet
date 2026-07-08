@@ -6,9 +6,9 @@ A headless, n8n-style workflow automation engine built on **Upstash Workflow** (
 - Extensible via a **node registry** — add a node type, and it's available to every UI and every workflow.
 - Swappable storage layer (Postgres + Redis defaults) behind narrow ports.
 
-📄 See **[DESIGN.md](./DESIGN.md)** for the full architecture and build spec.
+📄 **[DESIGN.md](./DESIGN.md)** — architecture · **[SETUP.md](./SETUP.md)** — run it · **[docs/DEPLOY.md](./docs/DEPLOY.md)** — deploy · **[docs/INPUTS_NEEDED.md](./docs/INPUTS_NEEDED.md)** — decisions
 
-> Status: **M1 (skeleton)** — Hono app, env config, storage ports, and the Postgres + Redis default adapters. No engine or API routes yet.
+> Status: **M1–M8 implemented** — storage ports + adapters, workflow CRUD + versioning, node catalog, durable interpreter (JSONata + loops), triggers (webhooks/events/schedules), runs & metrics, test-node, credentials, SSRF-safe HTTP, **API-key auth**, and deploy targets for **Node/Railway, Vercel, Cloudflare**. Runs locally with **zero external services** (`DISPATCH_MODE=local`).
 
 ## Getting started
 
@@ -40,4 +40,4 @@ src/
 
 ## Roadmap
 
-Milestones M1–M7 are defined in [DESIGN.md §17](./DESIGN.md#17-build-order-milestones). This is **M1**.
+Milestones M1–M7 (defined in [DESIGN.md §17](./DESIGN.md#17-build-order-milestones)) are implemented. Remaining/deferred items (auth hardening, `control.switch`, explicit `merge`, `data.code` sandbox, `splitInBatches`) are tracked in [docs/INPUTS_NEEDED.md](./docs/INPUTS_NEEDED.md).

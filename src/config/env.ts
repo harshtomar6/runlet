@@ -16,6 +16,9 @@ const EnvSchema = z.object({
   CRED_STORE: z.enum(["postgres"]).default("postgres"),
 
   DATABASE_URL: z.string().url().optional(),
+  // "postgres" = postgres.js over TCP (Node/Vercel/Railway);
+  // "neon" = Neon serverless HTTP driver (Cloudflare Workers / edge).
+  DB_DRIVER: z.enum(["postgres", "neon"]).default("postgres"),
 
   UPSTASH_REDIS_REST_URL: z.string().url().optional(),
   UPSTASH_REDIS_REST_TOKEN: z.string().optional(),
@@ -32,6 +35,33 @@ const EnvSchema = z.object({
   // Email provider (Resend) — optional; without it, email.send is a dry-run.
   RESEND_API_KEY: z.string().optional(),
   EMAIL_FROM: z.string().default("automations@example.com"),
+
+  // Public base URL of this service (for QStash schedule destinations).
+  PUBLIC_BASE_URL: z.string().url().optional(),
+  // Shared secret protecting internal trigger endpoints (schedule ticks).
+  INTERNAL_SECRET: z.string().optional(),
+  // Optional HMAC secret; when set, /hooks/:id requires a valid x-signature.
+  WEBHOOK_SECRET: z.string().optional(),
+
+  // Dev-only auth bypass: when set, all authed requests use this owner id and
+  // skip API-key verification. NEVER set in production.
+  AUTH_DEV_OWNER: z.string().optional(),
+
+  // Observability (all optional; absent => console-only / no alerts).
+  AXIOM_TOKEN: z.string().optional(),
+  AXIOM_DATASET: z.string().optional(),
+  SLACK_ALERT_WEBHOOK: z.string().url().optional(),
+  SENTRY_DSN: z.string().url().optional(),
+  LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
+}).superRefine((val, ctx) => {
+  // Fail closed: the app must never boot with auth bypassed in production.
+  if (val.NODE_ENV === "production" && val.AUTH_DEV_OWNER) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["AUTH_DEV_OWNER"],
+      message: "AUTH_DEV_OWNER must not be set when NODE_ENV=production (it disables authentication)",
+    });
+  }
 });
 
 export type Env = z.infer<typeof EnvSchema>;

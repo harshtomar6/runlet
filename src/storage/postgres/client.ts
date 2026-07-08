@@ -1,18 +1,33 @@
-import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
+import { neon } from "@neondatabase/serverless";
+import { drizzle as drizzleNeon } from "drizzle-orm/neon-http";
+import { drizzle as drizzlePg, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { env } from "../../config/env";
 import * as schema from "./schema";
 
-let _db: PostgresJsDatabase<typeof schema> | null = null;
+/**
+ * Shared DB type. Both the postgres.js and Neon-HTTP drizzle instances expose
+ * the same query-builder surface we use, so adapters type against this one.
+ */
+export type DB = PostgresJsDatabase<typeof schema>;
 
-/** Lazily-initialised Drizzle client. Connects on first use, not at import. */
-export function db(): PostgresJsDatabase<typeof schema> {
+let _db: DB | null = null;
+
+/**
+ * Lazily-initialised Drizzle client. Connects on first use, not at import.
+ * DB_DRIVER selects postgres.js (TCP; Node/Vercel/Railway) or Neon-HTTP
+ * (Cloudflare Workers / edge, no TCP sockets).
+ */
+export function db(): DB {
   if (!_db) {
     if (!env.DATABASE_URL) {
       throw new Error("DATABASE_URL is required for the Postgres store");
     }
-    const client = postgres(env.DATABASE_URL, { prepare: false });
-    _db = drizzle(client, { schema });
+    if (env.DB_DRIVER === "neon") {
+      _db = drizzleNeon(neon(env.DATABASE_URL), { schema }) as unknown as DB;
+    } else {
+      _db = drizzlePg(postgres(env.DATABASE_URL, { prepare: false }), { schema });
+    }
   }
   return _db;
 }

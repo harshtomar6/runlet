@@ -1,6 +1,9 @@
 import type {
+  ApiKey,
+  ApiKeyMeta,
   CredentialMeta,
   DecryptedSecret,
+  EventSubscription,
   Run,
   RunEvent,
   RunStatus,
@@ -37,6 +40,7 @@ export interface WorkflowRepo {
 }
 
 export interface RunQuery {
+  ownerId?: string;
   workflowId?: string;
   status?: RunStatus;
   from?: Date;
@@ -53,6 +57,12 @@ export interface RunSummary {
   stepCount: number;
 }
 
+export interface RunMetrics {
+  total: number;
+  byStatus: Record<string, number>;
+  totalSteps: number;
+}
+
 export interface EventLog {
   createRun(r: Run): Promise<void>;
   updateRun(id: string, patch: Partial<Run>): Promise<void>;
@@ -63,6 +73,9 @@ export interface EventLog {
 
   /** Analytics-shaped. A non-relational adapter may throw UnsupportedOperation. */
   query(f: RunQuery): Promise<RunSummary[]>;
+
+  /** SQL-side aggregate over ALL matching runs (not a capped fetch). */
+  metrics(f: RunQuery): Promise<RunMetrics>;
 }
 
 export interface PutCredentialInput {
@@ -76,19 +89,37 @@ export interface CredentialStore {
   get(id: string): Promise<DecryptedSecret>; // decrypts internally
   put(input: PutCredentialInput): Promise<void>; // encrypts internally
   list(ownerId: string): Promise<CredentialMeta[]>; // metadata only
-  delete(id: string): Promise<void>;
+  delete(id: string, ownerId: string): Promise<boolean>; // owner-scoped; true if a row was removed
 }
 
 export interface KVState {
   setNX(key: string, val: string, ttlSec: number): Promise<boolean>; // locks / dedup
+  set(key: string, val: string, ttlSec?: number): Promise<void>;
   get(key: string): Promise<string | null>;
-  incr(key: string): Promise<number>; // rate-limit counters
+  incr(key: string, ttlSec?: number): Promise<number>; // rate-limit counters (ttl set on first incr)
   del(key: string): Promise<void>;
+}
+
+export interface SubscriptionRepo {
+  create(s: EventSubscription): Promise<void>;
+  delete(id: string, ownerId: string): Promise<void>;
+  listByOwner(ownerId: string): Promise<EventSubscription[]>;
+  listByOwnerAndEventType(ownerId: string, eventType: string): Promise<EventSubscription[]>;
+  listByWorkflow(workflowId: string): Promise<EventSubscription[]>;
+}
+
+export interface ApiKeyRepo {
+  create(k: ApiKey): Promise<void>;
+  findByHash(keyHash: string): Promise<ApiKey | null>;
+  listByOwner(ownerId: string): Promise<ApiKeyMeta[]>;
+  revoke(id: string, ownerId: string): Promise<void>;
 }
 
 export interface Store {
   workflows: WorkflowRepo;
   events: EventLog;
   credentials: CredentialStore;
+  subscriptions: SubscriptionRepo;
+  apiKeys: ApiKeyRepo;
   kv: KVState;
 }

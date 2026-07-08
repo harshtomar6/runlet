@@ -38,7 +38,7 @@ export function validateGraph(input: GraphInput): ValidationResult {
   }
   const byId = new Map(nodes.map((n) => [n.id, n]));
 
-  // Trigger nodes: exactly one
+  // Trigger nodes: exactly one, and it must match the workflow's trigger type
   const triggerNodes = nodes.filter((n) => getNode(n.type)?.kind === "trigger");
   if (triggerNodes.length === 0) {
     errors.push({ code: "no_trigger", message: "Workflow has no trigger node" });
@@ -47,6 +47,16 @@ export function validateGraph(input: GraphInput): ValidationResult {
       code: "multiple_triggers",
       message: `Workflow has ${triggerNodes.length} trigger nodes; exactly one is allowed`,
     });
+  } else {
+    const t = triggerNodes[0]!;
+    const expected = `trigger.${input.trigger.type}`;
+    if (t.type !== expected) {
+      errors.push({
+        code: "trigger_mismatch",
+        message: `Trigger node "${t.type}" does not match workflow trigger "${input.trigger.type}" (expected "${expected}")`,
+        nodeId: t.id,
+      });
+    }
   }
 
   // Unknown node types + required params

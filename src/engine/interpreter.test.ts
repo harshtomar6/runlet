@@ -17,7 +17,9 @@ const nullCredentials: CredentialStore = {
   async list() {
     return [];
   },
-  async delete() {},
+  async delete() {
+    return false;
+  },
 };
 
 function run(def: WorkflowVersion, trigger: unknown) {
