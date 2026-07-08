@@ -81,3 +81,32 @@ test("control.if follows the true branch and skips the false branch", async () =
   assert.ok(executed.includes("yes"));
   assert.ok(!executed.includes("no"));
 });
+
+test("resolved inputs are validated before execute; missing required input fails fast", async () => {
+  const sink = new MemoryEventSink();
+  const exec = new LocalExecutionContext("t");
+  const def: WorkflowVersion = {
+    ...base,
+    nodes: [
+      { id: "t", type: "trigger.event", params: { eventType: "e" } },
+      // trigger.email is absent → {{ trigger.email }} resolves to undefined
+      { id: "e1", type: "email.send", params: { to: "{{ trigger.email }}", templateId: "d1" } },
+    ],
+    edges: [{ from: { nodeId: "t", port: "out" }, to: { nodeId: "e1", port: "in" } }],
+  };
+
+  await assert.rejects(() =>
+    runWorkflow(exec, {
+      runId: "t",
+      def,
+      trigger: {}, // no email
+      sink,
+      rt: { kv: new MemoryKVState(), credentials: nullCredentials, connectors: dryRunConnectors() },
+    }),
+  );
+
+  assert.ok(sink.events.some((e) => e.type === "node.failed" && e.nodeId === "e1"));
+  assert.ok(!sink.events.some((e) => e.type === "node.executed"));
+  assert.ok(!sink.events.some((e) => e.type === "run.succeeded"));
+  assert.equal(sink.events.filter((e) => e.type === "run.started").length, 1);
+});

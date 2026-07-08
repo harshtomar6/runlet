@@ -52,6 +52,13 @@ class LocalDispatcher implements Dispatcher {
         workflowRunId: exec.workflowRunId,
       });
     } catch (err) {
+      await store.events.append({
+        id: newId(),
+        runId,
+        type: "run.failed",
+        error: { message: err instanceof Error ? err.message : String(err) },
+        ts: new Date(),
+      });
       await store.events.updateRun(runId, { status: "failed", finishedAt: new Date() });
       throw err;
     }

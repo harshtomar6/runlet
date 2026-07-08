@@ -31,7 +31,9 @@ export async function runWorkflow(exec: ExecutionContext, p: RunParams): Promise
 
   const rt: NodeRuntime = { ...p.rt, runId: p.runId, workflowRunId: exec.workflowRunId };
 
-  await sink.append(evt(p.runId, "run.started", { input: trigger }));
+  // Wrapped in a durable step so it isn't re-emitted on every QStash replay
+  // and so newId()/new Date() run once (checkpointed) — see DESIGN §6.1/§6.2.
+  await exec.run("run-started", () => sink.append(evt(p.runId, "run.started", { input: trigger })));
 
   const triggerNode = def.nodes.find((n) => getNode(n.type)?.kind === "trigger");
   const frontier: string[] = [];
@@ -69,11 +71,22 @@ export async function runWorkflow(exec: ExecutionContext, p: RunParams): Promise
     }
 
     const inputs = resolveInputs(node.params, scope());
+    const schema = def2.inputSchema;
     const executeFn = def2.execute;
     const outcome = await exec.run(`node:${id}`, async () => {
       await sink.append(evt(p.runId, "node.started", { nodeId: id, input: inputs }));
       try {
-        const result = await executeFn({ inputs, params: node.params, rt });
+        // Validate resolved inputs before running (DESIGN §8) — fail fast on a
+        // missing/wrong-typed value instead of silently coercing (e.g. "undefined").
+        const parsed = schema.safeParse(inputs);
+        if (!parsed.success) {
+          throw new Error(`Invalid inputs for node "${id}" (${node.type}): ${parsed.error.message}`);
+        }
+        const result = await executeFn({
+          inputs: parsed.data as Record<string, unknown>,
+          params: node.params,
+          rt,
+        });
         await sink.append(evt(p.runId, "node.executed", { nodeId: id, output: result.data ?? null }));
         return result;
       } catch (err) {
@@ -87,7 +100,7 @@ export async function runWorkflow(exec: ExecutionContext, p: RunParams): Promise
     frontier.push(...successors(def.edges, id, port));
   }
 
-  await sink.append(evt(p.runId, "run.succeeded", {}));
+  await exec.run("run-succeeded", () => sink.append(evt(p.runId, "run.succeeded", {})));
   return { outputs };
 }
 

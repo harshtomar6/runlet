@@ -1,5 +1,6 @@
 import { serve } from "@upstash/workflow/hono";
 import { defaultConnectors } from "../connectors/default";
+import { newId } from "../domain/ids";
 import { store } from "../storage/factory";
 import type { ExecutionContext } from "./context";
 import { runWorkflow } from "./interpreter";
@@ -42,4 +43,20 @@ export const engineRoute = serve<EnginePayload>(async (context) => {
     finishedAt: new Date(),
     workflowRunId: context.workflowRunId,
   });
+}, {
+  // Invoked when a durable run exhausts retries: record the failure so the run
+  // doesn't stay stuck in "running" (DESIGN §6.1/§11).
+  failureFunction: async ({ context, failStatus, failResponse }) => {
+    const payload = context.requestPayload as EnginePayload | undefined;
+    const runId = payload?.runId;
+    if (!runId) return;
+    await store.events.append({
+      id: newId(),
+      runId,
+      type: "run.failed",
+      error: { failStatus, failResponse },
+      ts: new Date(),
+    });
+    await store.events.updateRun(runId, { status: "failed", finishedAt: new Date() });
+  },
 });
