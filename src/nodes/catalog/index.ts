@@ -3,6 +3,7 @@ import { actionNodes } from "./actions";
 import { aiNodes } from "./ai";
 import { controlNodes } from "./control";
 import { dataNodes } from "./data";
+import { stateNodes } from "./state";
 import { triggerNodes } from "./triggers";
 import { utilNodes } from "./util";
 
@@ -13,6 +14,7 @@ for (const def of [
   ...aiNodes,
   ...controlNodes,
   ...dataNodes,
+  ...stateNodes,
   ...utilNodes,
 ]) {
   registerNode(def);
