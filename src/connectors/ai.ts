@@ -154,7 +154,7 @@ async function call(apiKey: string, body: Record<string, unknown>): Promise<Chat
     headers: {
       authorization: `Bearer ${apiKey}`,
       "content-type": "application/json",
-      "x-title": "app-automations",
+      "x-title": "Runlet",
     },
     body: JSON.stringify(body),
   });

@@ -31,8 +31,8 @@ Production runs via `tsx` (no build step needed): `pnpm start` → `tsx src/inde
 
 **Docker (any host)**:
 ```bash
-docker build -t app-automations .
-docker run -p 3000:3000 --env-file .env app-automations
+docker build -t runlet .
+docker run -p 3000:3000 --env-file .env runlet
 ```
 
 Set `PUBLIC_BASE_URL` / `ENGINE_URL` to the public URL Railway/host assigns.

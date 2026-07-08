@@ -18,7 +18,7 @@ export async function captureToSentry(message: string, extra: Record<string, unk
       event_id: randomUUID().replace(/-/g, ""),
       timestamp: new Date().toISOString(),
       level: "error",
-      logger: "app-automations",
+      logger: "runlet",
       message,
       extra,
     };
@@ -26,7 +26,7 @@ export async function captureToSentry(message: string, extra: Record<string, unk
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-sentry-auth": `Sentry sentry_version=7, sentry_client=app-automations/0.1, sentry_key=${publicKey}`,
+        "x-sentry-auth": `Sentry sentry_version=7, sentry_client=runlet/0.1, sentry_key=${publicKey}`,
       },
       body: JSON.stringify(body),
     });
