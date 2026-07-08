@@ -35,9 +35,40 @@
       .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
       .row > * { flex: 1; min-width: 0; }
       .row > button { flex: 0 0 auto; }
-      pre.out { background: #0b0d12; border: 1px solid var(--border); border-radius: 6px;
-        padding: 8px; margin: 0; max-height: 220px; overflow: auto; font-size: 12px;
-        font-family: var(--mono); white-space: pre-wrap; word-break: break-word; }
+      .out { background: #0b0d12; border: 1px solid var(--border); border-radius: 6px;
+        padding: 6px 8px; margin: 0; max-height: 240px; overflow: auto; font-size: 12px;
+        font-family: var(--mono); }
+      .out:empty { display: none; }
+      .out-bar { display: flex; justify-content: flex-end; margin-bottom: 4px; }
+      button.mini { padding: 2px 7px; font-size: 11px; border-radius: 5px; }
+      /* JSON tree */
+      .jv { font-family: var(--mono); font-size: 12px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+      .jv-children { padding-left: 14px; border-left: 1px solid #232833; }
+      .jv-line { cursor: default; }
+      .jv-node > .jv-line { user-select: none; }
+      .jv-tog { display: inline-block; width: 12px; color: var(--muted); transition: transform .12s; }
+      .jv-node.collapsed > .jv-line > .jv-tog { transform: rotate(-90deg); }
+      .jv-node.collapsed > .jv-children, .jv-node.collapsed > .jv-closeline { display: none; }
+      .jv-node:not(.collapsed) > .jv-line > .jv-sum,
+      .jv-node:not(.collapsed) > .jv-line > .jv-close-inline { display: none; }
+      .jv-node.empty > .jv-line > .jv-tog { visibility: hidden; }
+      .jv-node.empty > .jv-children, .jv-node.empty > .jv-closeline { display: none; }
+      .jv-key { color: #7dd3fc; }
+      .jv-str { color: #86efac; }
+      .jv-num { color: #fbbf24; }
+      .jv-bool { color: #c4b5fd; }
+      .jv-null { color: #6b7280; }
+      .jv-punc { color: #6b7280; }
+      .jv-sum { color: var(--muted); font-style: italic; }
+      /* modal */
+      .modal { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 50; display: flex;
+        align-items: center; justify-content: center; padding: 24px; }
+      .modal-box { background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+        width: min(920px, 100%); max-height: 86vh; display: flex; flex-direction: column; overflow: hidden; }
+      .modal-bar { display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+        border-bottom: 1px solid var(--border); background: var(--panel2); }
+      .modal-bar strong { flex: 1; font-size: 13px; }
+      .modal-body { padding: 12px 14px; overflow: auto; background: #0b0d12; }
       .hint { color: var(--muted); font-size: 12px; }
       /* console drawer */
       #console { position: fixed; bottom: 0; left: 0; right: 0; height: 38vh;
@@ -57,9 +88,10 @@
       .path { color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .ms { color: var(--muted); }
       .entry .detail { padding: 4px 12px 10px 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-      .entry .detail h4 { margin: 4px 0; color: var(--muted); font-size: 11px; text-transform: uppercase; }
-      .entry .detail pre { margin: 0; background: #0b0d12; border: 1px solid var(--border); border-radius: 6px;
-        padding: 8px; max-height: 180px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+      .entry .detail h4 { margin: 0; color: var(--muted); font-size: 11px; text-transform: uppercase; flex: 1; }
+      .pane-head { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+      .entry .detail .jv { background: #0b0d12; border: 1px solid var(--border); border-radius: 6px;
+        padding: 8px; max-height: 200px; overflow: auto; }
       @media (max-width: 640px) { .entry .detail { grid-template-columns: 1fr; } }
       .pill { font-size: 11px; color: var(--muted); }
       /* workflow graph */
@@ -128,26 +160,38 @@
       }
 
       let callCount = 0;
-      function logEntry({ method, path, status, ms, request, response, ok }) {
+      function logEntry({ method, path, status, ms, request, response }) {
         callCount++;
         $("console-count").textContent = callCount + (callCount === 1 ? " call" : " calls");
         const cls = status === "ERR" ? "serr" : "s" + String(status)[0];
         const e = document.createElement("details");
         e.className = "entry";
-        e.open = false;
-        const reqStr = request === undefined ? "(no body)" : JSON.stringify(request, null, 2);
-        const resStr = typeof response === "string" ? response : JSON.stringify(response, null, 2);
-        e.innerHTML =
-          '<summary><span class="method">' + method + '</span>' +
+        const summary = mk("summary");
+        summary.innerHTML =
+          '<span class="method">' + method + '</span>' +
           '<span class="status ' + cls + '">' + status + '</span>' +
-          '<span class="path"></span><span class="ms">' + ms + 'ms</span></summary>' +
-          '<div class="detail"><div><h4>request</h4><pre></pre></div>' +
-          '<div><h4>response</h4><pre></pre></div></div>';
-        e.querySelector(".path").textContent = path;
-        e.querySelectorAll("pre")[0].textContent = reqStr;
-        e.querySelectorAll("pre")[1].textContent = resStr;
-        const log = $("console-log");
-        log.prepend(e);
+          '<span class="path"></span><span class="ms">' + ms + 'ms</span>';
+        summary.querySelector(".path").textContent = path;
+        e.appendChild(summary);
+        const detail = mk("div", "detail");
+        const req = request === undefined ? "(no body)" : request;
+        detail.appendChild(pane("request", req));
+        detail.appendChild(pane("response", response));
+        e.appendChild(detail);
+        $("console-log").prepend(e);
+      }
+
+      // a labelled pane with an ⤢ expand button + collapsible JSON tree
+      function pane(label, value) {
+        const wrap = mk("div");
+        const head = mk("div", "pane-head");
+        head.appendChild(mk("h4", null, label));
+        const btn = mk("button", "mini", "⤢");
+        btn.onclick = (ev) => { ev.preventDefault(); ev.stopPropagation(); openModal(value); };
+        head.appendChild(btn);
+        wrap.appendChild(head);
+        wrap.appendChild(jsonView(value));
+        return wrap;
       }
 
       async function api(method, path, body) {
@@ -174,8 +218,95 @@
         }
       }
 
-      const show = (el, v) => { el.textContent = typeof v === "string" ? v : JSON.stringify(v, null, 2); };
       const parseJSON = (s, fallback) => { try { return JSON.parse(s); } catch { return fallback; } };
+
+      // ---------- color-coded, collapsible JSON viewer ----------
+      function mk(tag, cls, text) {
+        const n = document.createElement(tag);
+        if (cls) n.className = cls;
+        if (text != null) n.textContent = text;
+        return n;
+      }
+      function jvValue(v) {
+        if (v === null) return mk("span", "jv-null", "null");
+        if (v === undefined) return mk("span", "jv-null", "undefined");
+        const t = typeof v;
+        if (t === "string") return mk("span", "jv-str", JSON.stringify(v));
+        if (t === "number") return mk("span", "jv-num", String(v));
+        if (t === "boolean") return mk("span", "jv-bool", String(v));
+        if (Array.isArray(v)) return jvContainer("[", "]", v.map((val) => ({ key: null, val })));
+        if (t === "object") return jvContainer("{", "}", Object.entries(v).map(([key, val]) => ({ key, val })));
+        return mk("span", "jv-str", String(v));
+      }
+      function jvContainer(open, close, entries) {
+        const node = mk("div", "jv-node");
+        const line = mk("div", "jv-line");
+        line.appendChild(mk("span", "jv-tog", "▾"));
+        line.appendChild(mk("span", "jv-punc", open));
+        line.appendChild(mk("span", "jv-sum", " " + entries.length + (open === "[" ? " items " : " keys ")));
+        line.appendChild(mk("span", "jv-punc jv-close-inline", close));
+        node.appendChild(line);
+        const children = mk("div", "jv-children");
+        entries.forEach((e, i) => {
+          const row = mk("div", "jv-row");
+          if (e.key !== null) {
+            row.appendChild(mk("span", "jv-key", JSON.stringify(e.key)));
+            row.appendChild(mk("span", "jv-punc", ": "));
+          }
+          row.appendChild(jvValue(e.val));
+          if (i < entries.length - 1) row.appendChild(mk("span", "jv-punc", ","));
+          children.appendChild(row);
+        });
+        node.appendChild(children);
+        const closeLine = mk("div", "jv-closeline");
+        closeLine.appendChild(mk("span", "jv-punc", close));
+        node.appendChild(closeLine);
+        if (entries.length === 0) node.classList.add("empty");
+        else line.onclick = () => node.classList.toggle("collapsed");
+        return node;
+      }
+      function jsonView(v) {
+        const root = mk("div", "jv");
+        root.appendChild(jvValue(v));
+        return root;
+      }
+      function openModal(v) {
+        const m = mk("div", "modal");
+        const box = mk("div", "modal-box");
+        const bar = mk("div", "modal-bar");
+        bar.appendChild(mk("strong", null, "JSON"));
+        const expand = mk("button", "mini", "Expand all");
+        const collapse = mk("button", "mini", "Collapse all");
+        const copy = mk("button", "mini", "Copy");
+        const close = mk("button", "mini", "✕");
+        bar.append(expand, collapse, copy, close);
+        const body = mk("div", "modal-body");
+        const view = jsonView(v);
+        body.appendChild(view);
+        expand.onclick = () => view.querySelectorAll(".jv-node.collapsed").forEach((n) => n.classList.remove("collapsed"));
+        collapse.onclick = () => view.querySelectorAll(".jv-node:not(.empty)").forEach((n) => n.classList.add("collapsed"));
+        copy.onclick = async () => {
+          try { await navigator.clipboard.writeText(JSON.stringify(v, null, 2)); copy.textContent = "Copied"; setTimeout(() => (copy.textContent = "Copy"), 1000); } catch (e) { /* ignore */ }
+        };
+        close.onclick = () => m.remove();
+        box.append(bar, body);
+        m.appendChild(box);
+        m.onclick = (e) => { if (e.target === m) m.remove(); };
+        const esc = (e) => { if (e.key === "Escape") { m.remove(); document.removeEventListener("keydown", esc); } };
+        document.addEventListener("keydown", esc);
+        document.body.appendChild(m);
+      }
+
+      // render a value into a card output box: expand button + JSON tree
+      function show(container, v) {
+        container.innerHTML = "";
+        const bar = mk("div", "out-bar");
+        const btn = mk("button", "mini", "⤢ expand");
+        btn.onclick = () => openModal(v);
+        bar.appendChild(btn);
+        container.appendChild(bar);
+        container.appendChild(jsonView(v));
+      }
 
       // ---------- workflow graph (layered DAG: longest-path layering) ----------
       function renderGraph(container, def) {
@@ -361,7 +492,7 @@
               <button data-act="catalog">GET /node-types</button>
               <button data-act="catalogGrouped">?grouped=true</button>
             </div>
-            <pre class="out" data-out></pre>`,
+            <div class="out" data-out></div>`,
           wire(el) {
             const out = el.querySelector("[data-out]");
             el.querySelector('[data-act=catalog]').onclick = async () => show(out, (await api("GET", "/node-types")).data.data.map((n) => n.type));
@@ -373,7 +504,7 @@
           html: `
             <textarea data-wf rows="12"></textarea>
             <div class="row"><button class="primary" data-act="create">POST /workflows</button></div>
-            <pre class="out" data-out></pre>`,
+            <div class="out" data-out></div>`,
           wire(el) {
             el.querySelector("[data-wf]").value = EXAMPLE_WF;
             const out = el.querySelector("[data-out]");
@@ -430,7 +561,7 @@
             <label>execute input (JSON)</label>
             <textarea data-input rows="3">{ "name": "Ada" }</textarea>
             <div class="row"><button class="primary" data-act="execute">Execute</button></div>
-            <pre class="out" data-out></pre>`,
+            <div class="out" data-out></div>`,
           wire(el) {
             const out = el.querySelector("[data-out]");
             const wf = () => el.querySelector('[data-bind=workflowId]').value.trim();
@@ -456,7 +587,7 @@
             <label>sample input (JSON)</label>
             <textarea data-sample rows="3">{ "name": "Ada" }</textarea>
             <div class="row"><label><input type="checkbox" data-dry checked /> dryRun</label><button class="primary" data-act="test">test-node</button></div>
-            <pre class="out" data-out></pre>`,
+            <div class="out" data-out></div>`,
           wire(el) {
             const out = el.querySelector("[data-out]");
             el.querySelector('[data-act=test]').onclick = async () => {
@@ -470,7 +601,7 @@
           html: `
             <div class="row"><button data-act="list">List runs</button><button data-act="metrics">Metrics</button></div>
             <div class="row"><input data-bind="runId" placeholder="runId" /><button data-act="get">Get run</button><button data-act="watch">Watch in graph</button></div>
-            <pre class="out" data-out></pre>`,
+            <div class="out" data-out></div>`,
           wire(el) {
             const out = el.querySelector("[data-out]");
             el.querySelector('[data-act=list]').onclick = async () => show(out, (await api("GET", "/runs")).data);
@@ -487,7 +618,7 @@
             <label>event payload (JSON)</label>
             <textarea data-payload rows="3">{ "name": "Ada" }</textarea>
             <div class="row"><button class="primary" data-act="emit">POST /events</button></div>
-            <pre class="out" data-out></pre>`,
+            <div class="out" data-out></div>`,
           wire(el) {
             const out = el.querySelector("[data-out]");
             el.querySelector('[data-act=subscribe]').onclick = async () =>
@@ -504,7 +635,7 @@
             <textarea data-secret rows="2">{ "apiKey": "sk-or-..." }</textarea>
             <div class="row"><button class="primary" data-act="create">Create</button><button data-act="list">List</button></div>
             <div class="row"><input data-cid placeholder="credentialId" /><button data-act="del">Delete</button></div>
-            <pre class="out" data-out></pre>`,
+            <div class="out" data-out></div>`,
           wire(el) {
             const out = el.querySelector("[data-out]");
             el.querySelector('[data-act=create]').onclick = async () =>
@@ -518,7 +649,7 @@
           html: `
             <div class="row"><input data-eid placeholder="eventId (from run/alert)" /></div>
             <div class="row"><label><input type="checkbox" data-approved checked /> approved</label><button class="primary" data-act="approve">POST /approvals</button></div>
-            <pre class="out" data-out></pre>
+            <div class="out" data-out></div>
             <p class="hint">Local mode auto-approves; this matters in qstash mode.</p>`,
           wire(el) {
             const out = el.querySelector("[data-out]");
@@ -530,7 +661,7 @@
           title: "API keys",
           html: `
             <div class="row"><input data-name placeholder="key name" value="dev-key" /><button data-act="create">Create</button><button data-act="list">List</button></div>
-            <pre class="out" data-out></pre>
+            <div class="out" data-out></div>
             <p class="hint">Paste a returned key into the "api key" field up top to test real auth.</p>`,
           wire(el) {
             const out = el.querySelector("[data-out]");
