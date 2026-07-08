@@ -3,7 +3,8 @@ import { env } from "../config/env";
 import { defaultConnectors } from "../connectors/default";
 import { newId } from "../domain/ids";
 import type { Run } from "../domain/types";
-import { store } from "../storage/factory";
+import type { Store } from "../ports";
+import { store as defaultStore } from "../storage/factory";
 import { LocalExecutionContext } from "./local-context";
 import { runWorkflow } from "./interpreter";
 import { StoreEventSink } from "./sink";
@@ -32,34 +33,40 @@ function newRunRow(runId: string, input: StartInput): Run {
 }
 
 /** Runs the interpreter inline. For dev / no-infra; sleeps are recorded, not awaited. */
-class LocalDispatcher implements Dispatcher {
+export class LocalDispatcher implements Dispatcher {
+  constructor(private readonly store: Store) {}
+
   async start(input: StartInput): Promise<{ runId: string }> {
     const runId = newId();
-    await store.events.createRun(newRunRow(runId, input));
-    const def = await store.workflows.getVersion(input.workflowId, input.versionId);
+    await this.store.events.createRun(newRunRow(runId, input));
+    const def = await this.store.workflows.getVersion(input.workflowId, input.versionId);
     const exec = new LocalExecutionContext(runId);
     try {
       await runWorkflow(exec, {
         runId,
         def,
         trigger: input.trigger,
-        sink: new StoreEventSink(store.events),
-        rt: { kv: store.kv, credentials: store.credentials, connectors: defaultConnectors() },
+        sink: new StoreEventSink(this.store.events),
+        rt: {
+          kv: this.store.kv,
+          credentials: this.store.credentials,
+          connectors: defaultConnectors(),
+        },
       });
-      await store.events.updateRun(runId, {
+      await this.store.events.updateRun(runId, {
         status: "succeeded",
         finishedAt: new Date(),
         workflowRunId: exec.workflowRunId,
       });
     } catch (err) {
-      await store.events.append({
+      await this.store.events.append({
         id: newId(),
         runId,
         type: "run.failed",
         error: { message: err instanceof Error ? err.message : String(err) },
         ts: new Date(),
       });
-      await store.events.updateRun(runId, { status: "failed", finishedAt: new Date() });
+      await this.store.events.updateRun(runId, { status: "failed", finishedAt: new Date() });
       throw err;
     }
     return { runId };
@@ -67,12 +74,14 @@ class LocalDispatcher implements Dispatcher {
 }
 
 /** Enqueues a durable run to the engine endpoint via QStash. */
-class QStashDispatcher implements Dispatcher {
+export class QStashDispatcher implements Dispatcher {
+  constructor(private readonly store: Store) {}
+
   async start(input: StartInput): Promise<{ runId: string }> {
     if (!env.ENGINE_URL) throw new Error("ENGINE_URL is required for qstash dispatch");
     if (!env.QSTASH_TOKEN) throw new Error("QSTASH_TOKEN is required for qstash dispatch");
     const runId = newId();
-    await store.events.createRun(newRunRow(runId, input));
+    await this.store.events.createRun(newRunRow(runId, input));
     const client = new Client({ token: env.QSTASH_TOKEN });
     await client.trigger({
       url: env.ENGINE_URL,
@@ -82,5 +91,8 @@ class QStashDispatcher implements Dispatcher {
   }
 }
 
-export const dispatcher: Dispatcher =
-  env.DISPATCH_MODE === "qstash" ? new QStashDispatcher() : new LocalDispatcher();
+export function makeDispatcher(store: Store): Dispatcher {
+  return env.DISPATCH_MODE === "qstash" ? new QStashDispatcher(store) : new LocalDispatcher(store);
+}
+
+export const dispatcher: Dispatcher = makeDispatcher(defaultStore);

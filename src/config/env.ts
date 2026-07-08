@@ -32,6 +32,13 @@ const EnvSchema = z.object({
   // Email provider (Resend) — optional; without it, email.send is a dry-run.
   RESEND_API_KEY: z.string().optional(),
   EMAIL_FROM: z.string().default("automations@example.com"),
+
+  // Public base URL of this service (for QStash schedule destinations).
+  PUBLIC_BASE_URL: z.string().url().optional(),
+  // Shared secret protecting internal trigger endpoints (schedule ticks).
+  INTERNAL_SECRET: z.string().optional(),
+  // Optional HMAC secret; when set, /hooks/:id requires a valid x-signature.
+  WEBHOOK_SECRET: z.string().optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

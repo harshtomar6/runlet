@@ -1,6 +1,7 @@
 import type {
   CredentialMeta,
   DecryptedSecret,
+  EventSubscription,
   Run,
   RunEvent,
   RunStatus,
@@ -81,14 +82,24 @@ export interface CredentialStore {
 
 export interface KVState {
   setNX(key: string, val: string, ttlSec: number): Promise<boolean>; // locks / dedup
+  set(key: string, val: string, ttlSec?: number): Promise<void>;
   get(key: string): Promise<string | null>;
   incr(key: string): Promise<number>; // rate-limit counters
   del(key: string): Promise<void>;
+}
+
+export interface SubscriptionRepo {
+  create(s: EventSubscription): Promise<void>;
+  delete(id: string, ownerId: string): Promise<void>;
+  listByOwner(ownerId: string): Promise<EventSubscription[]>;
+  listByOwnerAndEventType(ownerId: string, eventType: string): Promise<EventSubscription[]>;
+  listByWorkflow(workflowId: string): Promise<EventSubscription[]>;
 }
 
 export interface Store {
   workflows: WorkflowRepo;
   events: EventLog;
   credentials: CredentialStore;
+  subscriptions: SubscriptionRepo;
   kv: KVState;
 }

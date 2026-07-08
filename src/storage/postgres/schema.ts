@@ -93,10 +93,12 @@ export const eventSubscriptions = pgTable(
   "event_subscriptions",
   {
     id: text("id").primaryKey(),
+    ownerId: text("owner_id").notNull(),
     eventType: text("event_type").notNull(),
     workflowId: text("workflow_id").notNull(),
   },
   (t) => ({
-    byEventType: index("subs_event_type_idx").on(t.eventType),
+    byOwnerEventType: index("subs_owner_event_type_idx").on(t.ownerId, t.eventType),
+    byWorkflow: index("subs_workflow_idx").on(t.workflowId),
   }),
 );

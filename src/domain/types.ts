@@ -106,6 +106,7 @@ export interface DecryptedSecret {
 
 export interface EventSubscription {
   id: string;
+  ownerId: string;
   eventType: string;
   workflowId: string;
 }

@@ -1,4 +1,5 @@
 import { newId } from "../domain/ids";
+import type { ScheduleManager } from "../engine/schedule";
 import type { CreateWorkflowInput, UpdateWorkflowInput } from "../domain/schemas";
 import type { Workflow, WorkflowVersion } from "../domain/types";
 import { ApiError, ValidationFailed } from "../errors";
@@ -11,7 +12,10 @@ import { validateGraph, type ValidationResult } from "./validation";
  * activation. Trigger registration (schedules/webhooks) lands in M4.
  */
 export class WorkflowService {
-  constructor(private readonly store: Store) {}
+  constructor(
+    private readonly store: Store,
+    private readonly schedules?: ScheduleManager,
+  ) {}
 
   async create(
     ownerId: string,
@@ -101,6 +105,7 @@ export class WorkflowService {
   async remove(ownerId: string, id: string): Promise<void> {
     await this.get(ownerId, id); // owner + existence check
     await this.store.workflows.setStatus(id, "disabled");
+    await this.schedules?.unregister(id);
   }
 
   async listVersions(ownerId: string, id: string): Promise<WorkflowVersion[]> {
@@ -122,11 +127,19 @@ export class WorkflowService {
     const result = validateGraph({ trigger: wf.trigger, nodes: version.nodes, edges: version.edges });
     if (!result.ok) throw new ValidationFailed(result.errors);
     await this.store.workflows.activate(id, versionId);
+
+    // (De)register the schedule to match the active trigger.
+    if (wf.trigger.type === "schedule" && wf.trigger.cron) {
+      await this.schedules?.register(id, wf.trigger.cron);
+    } else {
+      await this.schedules?.unregister(id);
+    }
   }
 
   async disable(ownerId: string, id: string): Promise<void> {
     await this.get(ownerId, id);
     await this.store.workflows.setStatus(id, "disabled");
+    await this.schedules?.unregister(id);
   }
 
   /** The version a manual run should use: the active one, else the latest. */

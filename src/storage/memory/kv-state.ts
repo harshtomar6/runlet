@@ -10,6 +10,10 @@ export class MemoryKVState implements KVState {
     return true;
   }
 
+  async set(key: string, val: string): Promise<void> {
+    this.m.set(key, val);
+  }
+
   async get(key: string): Promise<string | null> {
     return this.m.get(key) ?? null;
   }

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { ActivateSchema, CreateWorkflowSchema, UpdateWorkflowSchema } from "../../domain/schemas";
 import { ApiError } from "../../errors";
 import { dispatcher } from "../../engine/dispatch";
+import { scheduleManager } from "../../engine/schedule";
 import { WorkflowService } from "../../services/workflow-service";
 import { store } from "../../storage/factory";
 import { auth } from "../middleware/auth";
@@ -10,7 +11,7 @@ import { parseBody } from "../lib/parse";
 import { ok } from "../lib/respond";
 import type { AppEnv } from "../types";
 
-const service = new WorkflowService(store);
+const service = new WorkflowService(store, scheduleManager);
 
 const StatusSchema = z.enum(["draft", "active", "disabled"]);
 const DEFAULT_LIMIT = 50;
