@@ -113,3 +113,45 @@ test("ai.agent rejects an unknown tool node at setup", async () => {
     /unknown tool node/,
   );
 });
+
+test("ai.agent gates a requireApproval tool: denied → not run, fed back to model", async () => {
+  let round = 0;
+  const connectors: Connectors = {
+    ...dryRunConnectors(),
+    ai: {
+      ...dryRunConnectors().ai,
+      async chat() {
+        if (round++ === 0) {
+          return {
+            message: { role: "assistant", content: "", tool_calls: [] },
+            content: "",
+            toolCalls: [{ id: "c1", name: "data_set", args: { fields: { x: 1 } } }],
+            dryRun: false,
+          };
+        }
+        return { message: { role: "assistant", content: "ok" }, content: "ok", toolCalls: [], dryRun: false };
+      },
+    },
+  };
+
+  // DENIED
+  const denied = await aiAgent.execute!({
+    inputs: { model: "m", prompt: "go", tools: [{ tool: "data.set", requireApproval: true }], maxSteps: 5 },
+    params: {},
+    rt: rt({ connectors, waitForEvent: async () => ({ timedOut: false, data: { approved: false } }) }),
+  });
+  const dData = denied.data as { toolCalls: Array<{ approved?: boolean; result: string }> };
+  assert.equal(dData.toolCalls[0]?.approved, false);
+  assert.match(dData.toolCalls[0]?.result ?? "", /denied by human/);
+
+  // APPROVED
+  round = 0;
+  const approved = await aiAgent.execute!({
+    inputs: { model: "m", prompt: "go", tools: [{ tool: "data.set", requireApproval: true }], maxSteps: 5 },
+    params: {},
+    rt: rt({ connectors, waitForEvent: async () => ({ timedOut: false, data: { approved: true } }) }),
+  });
+  const aData = approved.data as { toolCalls: Array<{ approved?: boolean; result: string }> };
+  assert.equal(aData.toolCalls[0]?.approved, true);
+  assert.match(aData.toolCalls[0]?.result ?? "", /"x":1/);
+});

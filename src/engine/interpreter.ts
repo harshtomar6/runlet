@@ -152,7 +152,9 @@ export async function runWorkflow(exec: ExecutionContext, p: RunParams): Promise
       workflowRunId: exec.workflowRunId,
       stepId: baseStepId,
       step: (subId, fn) => exec.run(`${baseStepId}:${subId}`, fn),
-      waitForEvent: (eventId, timeoutSec) => exec.waitForEvent(`${baseStepId}:wait`, eventId, timeoutSec),
+      // eventId (deterministic + unique per wait) is the step name, so a node
+      // that waits multiple times (e.g. agent per-tool approval) doesn't collide.
+      waitForEvent: (eventId, timeoutSec) => exec.waitForEvent(`wait:${eventId}`, eventId, timeoutSec),
     };
     await exec.run(`${baseStepId}:started`, () =>
       sink.append(evt(p.runId, "node.started", { nodeId: id, input: inputs })),
