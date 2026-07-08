@@ -63,3 +63,45 @@ test("email.smtp dry-runs without a credential", async () => {
   assert.equal(out.port, "success");
   assert.equal((out.data as { dryRun: boolean }).dryRun, true);
 });
+
+test("ai.complete dry-runs without a key and shapes prompt+system into messages", async () => {
+  const { aiComplete } = await import("./ai");
+
+  // dry-run via the dryRunConnectors provided by args()
+  const dry = await aiComplete.execute!(args({ model: "openai/gpt-4o-mini", prompt: "hi" }));
+  assert.equal(dry.port, "success");
+  assert.equal((dry.data as { dryRun: boolean }).dryRun, true);
+
+  // real path: a recording connector captures the shaped request
+  let captured: unknown;
+  const recording = {
+    ...dryRunConnectors(),
+    ai: {
+      async complete(_c: unknown, input: unknown) {
+        captured = input;
+        return { text: "ok", model: "m", dryRun: false };
+      },
+    },
+  } as unknown as import("../../connectors").Connectors;
+
+  const out = await aiComplete.execute!({
+    inputs: { model: "anthropic/claude-sonnet-4", prompt: "Summarize", system: "Be terse" },
+    params: {},
+    rt: { ...rt(), connectors: recording },
+  });
+  assert.equal((out.data as { text: string }).text, "ok");
+  assert.deepEqual(captured, {
+    model: "anthropic/claude-sonnet-4",
+    messages: [
+      { role: "system", content: "Be terse" },
+      { role: "user", content: "Summarize" },
+    ],
+    temperature: undefined,
+    maxTokens: undefined,
+  });
+});
+
+test("ai.complete requires prompt or messages", async () => {
+  const { aiComplete } = await import("./ai");
+  await assert.rejects(() => aiComplete.execute!(args({ model: "x" })), /prompt.*or.*messages/);
+});

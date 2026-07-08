@@ -43,9 +43,33 @@ export interface SmtpConnector {
   send(creds: DecryptedSecret | null, input: SmtpInput): Promise<{ messageId: string; dryRun: boolean }>;
 }
 
+export interface AiMessage {
+  role: "system" | "user" | "assistant";
+  content: string;
+}
+
+export interface AiInput {
+  model: string;
+  messages: AiMessage[];
+  temperature?: number;
+  maxTokens?: number;
+}
+
+export interface AiResult {
+  text: string;
+  model: string;
+  usage?: unknown;
+  dryRun: boolean;
+}
+
+export interface AiConnector {
+  complete(creds: DecryptedSecret | null, input: AiInput): Promise<AiResult>;
+}
+
 export interface Connectors {
   email: EmailConnector;
   slack: SlackConnector;
   http: HttpConnector;
   smtp: SmtpConnector;
+  ai: AiConnector;
 }
