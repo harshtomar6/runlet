@@ -17,6 +17,18 @@ export type Scope = Record<string, unknown>;
 const FULL = /^\s*\{\{\s*([\s\S]+?)\s*\}\}\s*$/;
 const PART = /\{\{\s*([\s\S]+?)\s*\}\}/g;
 
+/** Per-expression CPU/time budget (DESIGN §8) — bounds a hostile expression. */
+const EVAL_TIMEOUT_MS = 1000;
+
+/** Thrown for genuine expression errors (syntax / evaluation), distinct from a
+ *  missing path (which JSONata returns as `undefined`, not an error). */
+export class ExpressionError extends Error {
+  constructor(expr: string, cause: unknown) {
+    super(`Expression failed: "${expr}" — ${cause instanceof Error ? cause.message : String(cause)}`);
+    this.name = "ExpressionError";
+  }
+}
+
 export async function resolveValue(value: unknown, scope: Scope): Promise<unknown> {
   if (typeof value === "string") return resolveString(value, scope);
   if (Array.isArray(value)) return Promise.all(value.map((v) => resolveValue(v, scope)));
@@ -59,9 +71,33 @@ async function resolveString(value: string, scope: Scope): Promise<unknown> {
 }
 
 async function evalExpr(expr: string, scope: Scope): Promise<unknown> {
+  // A missing path yields `undefined` (not an error); a syntax/eval failure
+  // throws — surface it as ExpressionError instead of silently returning "".
+  let compiled: ReturnType<typeof jsonata>;
   try {
-    return await jsonata(expr).evaluate(scope);
-  } catch {
-    return undefined;
+    compiled = jsonata(expr);
+  } catch (err) {
+    throw new ExpressionError(expr, err);
   }
+  try {
+    return await withTimeout(compiled.evaluate(scope), EVAL_TIMEOUT_MS, expr);
+  } catch (err) {
+    throw new ExpressionError(expr, err);
+  }
+}
+
+function withTimeout<T>(p: Promise<T>, ms: number, expr: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`timed out after ${ms}ms: "${expr}"`)), ms);
+    p.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    );
+  });
 }

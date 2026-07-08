@@ -149,8 +149,11 @@ export class MemoryStore implements Store {
       async list(ownerId) {
         return [...self.creds.values()].filter((c) => c.meta.ownerId === ownerId).map((c) => c.meta);
       },
-      async delete(id) {
+      async delete(id, ownerId) {
+        const c = self.creds.get(id);
+        if (!c || c.meta.ownerId !== ownerId) return false;
         self.creds.delete(id);
+        return true;
       },
     };
 

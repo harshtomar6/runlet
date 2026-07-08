@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { CredentialMeta, DecryptedSecret } from "../../domain/types";
 import type { CredentialStore, PutCredentialInput } from "../../ports";
 import { NotFoundError } from "../../ports/errors";
@@ -43,7 +43,11 @@ export class PostgresCredentialStore implements CredentialStore {
     return rows;
   }
 
-  async delete(id: string): Promise<void> {
-    await db().delete(credentials).where(eq(credentials.id, id));
+  async delete(id: string, ownerId: string): Promise<boolean> {
+    const removed = await db()
+      .delete(credentials)
+      .where(and(eq(credentials.id, id), eq(credentials.ownerId, ownerId)))
+      .returning({ id: credentials.id });
+    return removed.length > 0;
   }
 }

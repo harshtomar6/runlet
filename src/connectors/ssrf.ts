@@ -1,12 +1,61 @@
-import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
+import { Agent, fetch as undiciFetch, type Response as UndiciResponse } from "undici";
 
 /**
- * Guards outbound HTTP against SSRF: only http/https, and the resolved host
- * must not be loopback/private/link-local/unique-local (blocks cloud metadata
- * endpoints like 169.254.169.254). Throws on violation.
+ * SSRF-hardened HTTP fetch.
+ *
+ *  - Only http/https.
+ *  - The resolved host must not be loopback/private/link-local/unique-local
+ *    (blocks cloud metadata like 169.254.169.254). IPv6 literals are handled
+ *    (brackets stripped before the range check).
+ *  - Redirects are followed MANUALLY and each hop is re-validated, so a public
+ *    URL can't 30x-redirect to an internal host.
+ *  - The connection is PINNED to the exact IP we verified (custom undici
+ *    dispatcher lookup), closing the DNS-rebinding TOCTOU window between
+ *    verification and connect.
+ *
+ * On edge runtimes without node:dns (e.g. Cloudflare Workers) it degrades to
+ * hostname-only checks + a plain fetch (documented in DEPLOY.md).
  */
+const MAX_REDIRECTS = 5;
+
+interface Resolved {
+  address: string;
+  family: number;
+}
+
+export interface SafeFetchInit {
+  method?: string;
+  headers?: Record<string, string>;
+  body?: string;
+}
+
+export async function safeFetch(rawUrl: string, init: SafeFetchInit = {}): Promise<UndiciResponse> {
+  let current = rawUrl;
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    const pinned = await verify(current);
+    const dispatcher = pinned ? pinnedAgent(pinned) : undefined;
+    const res = await undiciFetch(current, {
+      method: init.method,
+      headers: init.headers,
+      body: init.body,
+      redirect: "manual",
+      ...(dispatcher ? { dispatcher } : {}),
+    });
+    const location = res.status >= 300 && res.status < 400 ? res.headers.get("location") : null;
+    if (!location) return res;
+    current = new URL(location, current).toString(); // re-validated on next loop
+  }
+  throw new Error("Too many redirects");
+}
+
+/** Back-compat guard for callers that only want validation. */
 export async function assertSafeUrl(rawUrl: string): Promise<void> {
+  await verify(rawUrl);
+}
+
+/** Validate a single URL; returns the pinned IP (or null when DNS is unavailable). */
+async function verify(rawUrl: string): Promise<Resolved | null> {
   let url: URL;
   try {
     url = new URL(rawUrl);
@@ -17,19 +66,48 @@ export async function assertSafeUrl(rawUrl: string): Promise<void> {
     throw new Error(`Blocked protocol: ${url.protocol}`);
   }
 
-  const host = url.hostname.toLowerCase();
+  let host = url.hostname.toLowerCase();
+  if (host.startsWith("[") && host.endsWith("]")) host = host.slice(1, -1); // IPv6 literal
   if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".internal")) {
     throw new Error(`Blocked host: ${host}`);
   }
 
-  const literal = isIP(host);
-  const addresses = literal
-    ? [host]
-    : (await lookup(host, { all: true })).map((a) => a.address);
-
-  for (const addr of addresses) {
-    if (isPrivateAddress(addr)) throw new Error(`Blocked private address for ${host}: ${addr}`);
+  const literalFamily = isIP(host);
+  if (literalFamily) {
+    if (isPrivateAddress(host)) throw new Error(`Blocked private address: ${host}`);
+    return { address: host, family: literalFamily };
   }
+
+  let lookup: typeof import("node:dns/promises").lookup;
+  try {
+    ({ lookup } = await import("node:dns/promises"));
+  } catch {
+    return null; // edge runtime: hostname-only guard already applied above
+  }
+  const results = await lookup(host, { all: true });
+  for (const r of results) {
+    if (isPrivateAddress(r.address)) throw new Error(`Blocked private address for ${host}: ${r.address}`);
+  }
+  const first = results[0];
+  if (!first) throw new Error(`Could not resolve ${host}`);
+  return { address: first.address, family: first.family };
+}
+
+/** An undici Agent that connects only to the pre-verified IP (no re-resolution). */
+function pinnedAgent(pinned: Resolved): Agent {
+  return new Agent({
+    connect: {
+      lookup: (_hostname, options, callback) => {
+        if (options && (options as { all?: boolean }).all) {
+          (callback as unknown as (e: Error | null, a: Array<{ address: string; family: number }>) => void)(null, [
+            { address: pinned.address, family: pinned.family },
+          ]);
+        } else {
+          (callback as (e: Error | null, a: string, f: number) => void)(null, pinned.address, pinned.family);
+        }
+      },
+    },
+  });
 }
 
 function isPrivateAddress(addr: string): boolean {

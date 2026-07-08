@@ -17,7 +17,9 @@ const nullCredentials: CredentialStore = {
   async list() {
     return [];
   },
-  async delete() {},
+  async delete() {
+    return false;
+  },
 };
 
 async function run(def: WorkflowVersion, trigger: unknown) {
@@ -82,4 +84,29 @@ test("JSONata expressions resolve nested + comparison", async () => {
   );
 
   assert.ok(sink.events.some((e) => e.type === "node.executed" && e.nodeId === "yes"));
+});
+
+test("loop iterations are not deduped: each send runs (distinct stepId)", async () => {
+  const { sink } = await run(
+    {
+      ...base,
+      nodes: [
+        { id: "t", type: "trigger.manual", params: {} },
+        { id: "loop", type: "control.loop", params: { times: 3 } },
+        // STATIC content — only the per-iteration stepId differs. With the old
+        // content-based idempotency key, iterations 2..3 would be skipped.
+        { id: "e", type: "email.send", params: { to: "a@b.com", templateId: "drip" } },
+      ],
+      edges: [
+        { from: { nodeId: "t", port: "out" }, to: { nodeId: "loop", port: "in" } },
+        { from: { nodeId: "loop", port: "each" }, to: { nodeId: "e", port: "in" } },
+      ],
+    },
+    {},
+  );
+  const sends = sink.events.filter((e) => e.type === "node.executed" && e.nodeId === "e");
+  assert.equal(sends.length, 3);
+  for (const s of sends) {
+    assert.notEqual((s.output as { skipped?: boolean } | null)?.skipped, true);
+  }
 });

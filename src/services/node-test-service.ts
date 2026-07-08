@@ -62,6 +62,7 @@ export class NodeTestService {
         connectors: dryRun ? dryRunConnectors() : this.realConnectors,
         runId: `test_${newId()}`,
         workflowRunId: `test_${newId()}`,
+        stepId: `test_${newId()}:${node.id}`, // unique per invocation (repeatable tests)
       },
     });
   }

@@ -12,7 +12,7 @@ export interface RunParams {
   def: WorkflowVersion; // pinned nodes/edges
   trigger: unknown;
   sink: EventSink;
-  rt: Omit<NodeRuntime, "runId" | "workflowRunId">;
+  rt: Omit<NodeRuntime, "runId" | "workflowRunId" | "stepId">;
 }
 
 export interface RunOutcome {
@@ -32,8 +32,12 @@ export async function runWorkflow(exec: ExecutionContext, p: RunParams): Promise
   const { def, trigger, sink } = p;
   const nodesById = new Map(def.nodes.map((n) => [n.id, n]));
   const outputs: Record<string, unknown> = {};
-  const rt: NodeRuntime = { ...p.rt, runId: p.runId, workflowRunId: exec.workflowRunId };
-  const scope = (): Record<string, unknown> => ({ trigger, ...outputs });
+  // `locals` carries per-iteration bindings (e.g. loop index) into resolution.
+  const scope = (locals: Record<string, unknown> = {}): Record<string, unknown> => ({
+    trigger,
+    ...outputs,
+    ...locals,
+  });
 
   // Wrapped in a durable step so it isn't re-emitted on every QStash replay and
   // so newId()/new Date() run once (checkpointed) — see DESIGN §6.1/§6.2.
@@ -53,7 +57,11 @@ export async function runWorkflow(exec: ExecutionContext, p: RunParams): Promise
   await exec.run("run-succeeded", () => sink.append(evt(p.runId, "run.succeeded", {})));
   return { outputs };
 
-  async function walk(startIds: string[], prefix: string): Promise<void> {
+  async function walk(
+    startIds: string[],
+    prefix: string,
+    locals: Record<string, unknown> = {},
+  ): Promise<void> {
     const frontier = [...startIds];
     const visited = new Set<string>();
 
@@ -68,17 +76,19 @@ export async function runWorkflow(exec: ExecutionContext, p: RunParams): Promise
       if (!def2) throw new Error(`Unknown node type at runtime: ${node.type}`);
 
       if (def2.kind === "wait") {
-        const seconds = parseDuration(String(await resolveValue(node.params.duration, scope())));
+        const seconds = parseDuration(String(await resolveValue(node.params.duration, scope(locals))));
         await exec.sleep(`${prefix}sleep:${id}`, seconds);
         frontier.push(...successors(def.edges, id, "out"));
         continue;
       }
 
       if (node.type === "control.loop") {
-        const times = Math.min(Number(await resolveValue(node.params.times, scope())) || 0, MAX_LOOP);
+        const times = Math.min(Number(await resolveValue(node.params.times, scope(locals))) || 0, MAX_LOOP);
         const body = successors(def.edges, id, "each");
         for (let i = 0; i < times; i++) {
-          await walk(body, `${prefix}${id}:${i}:`);
+          // Bind the iteration index so body nodes can resolve distinct inputs
+          // (e.g. `{{ loop.index }}`) instead of repeating identical values.
+          await walk(body, `${prefix}${id}:${i}:`, { ...locals, loop: { index: i } });
         }
         frontier.push(...successors(def.edges, id, "done"));
         continue;
@@ -86,9 +96,17 @@ export async function runWorkflow(exec: ExecutionContext, p: RunParams): Promise
 
       if (!def2.execute) throw new Error(`Node type "${node.type}" has no runtime implementation`);
 
-      const inputs = await resolveInputs(node.params, scope());
+      const inputs = await resolveInputs(node.params, scope(locals));
       const schema = def2.inputSchema;
       const executeFn = def2.execute;
+      // stepId is iteration-scoped (via prefix), so idempotency keys differ per
+      // loop iteration while retries of the same step reuse it.
+      const rt: NodeRuntime = {
+        ...p.rt,
+        runId: p.runId,
+        workflowRunId: exec.workflowRunId,
+        stepId: `${prefix}node:${id}`,
+      };
       const outcome = await exec.run(`${prefix}node:${id}`, async () => {
         await sink.append(evt(p.runId, "node.started", { nodeId: id, input: inputs }));
         try {

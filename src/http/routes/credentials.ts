@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { newId } from "../../domain/ids";
+import { ApiError } from "../../errors";
 import { store } from "../../storage/factory";
 import { auth } from "../middleware/auth";
 import { parseBody } from "../lib/parse";
@@ -26,6 +27,7 @@ credentials.post("/", async (c) => {
 credentials.get("/", async (c) => ok(c, await store.credentials.list(c.get("ownerId"))));
 
 credentials.delete("/:id", async (c) => {
-  await store.credentials.delete(c.req.param("id"));
+  const deleted = await store.credentials.delete(c.req.param("id"), c.get("ownerId"));
+  if (!deleted) throw new ApiError(404, "not_found", "Credential not found");
   return ok(c, { deleted: true });
 });

@@ -12,6 +12,10 @@ export interface NodeRuntime {
   connectors: Connectors;
   runId: string;
   workflowRunId: string;
+  /** Durable step id for this execution (iteration-scoped inside loops).
+   *  Use it in idempotency keys so retries of the SAME step dedup, while
+   *  distinct loop iterations do not. */
+  stepId: string;
 }
 
 export interface NodeExecArgs {
