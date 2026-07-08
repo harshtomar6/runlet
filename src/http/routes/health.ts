@@ -14,6 +14,16 @@ health.get("/", (c) =>
 );
 
 /**
+ * Body-read diagnostic — public, no DB. Reads the request body and echoes its
+ * size. If a POST with a body hangs everywhere but this returns, the request
+ * adapter (not the DB) is the problem.
+ */
+health.post("/echo", async (c) => {
+  const text = await c.req.text();
+  return c.json({ ok: true, method: c.req.method, bytes: text.length });
+});
+
+/**
  * Deep DB check — PUBLIC and unauthenticated ON PURPOSE: the normal auth path
  * hits the DB (API-key lookup), so when the DB is unreachable you can't
  * authenticate to diagnose it. Runs `select 1` and returns the outcome — or the
