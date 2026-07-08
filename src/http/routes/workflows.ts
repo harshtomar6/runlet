@@ -20,6 +20,7 @@ const TestNodeSchema = z.object({
   nodeId: z.string().min(1),
   sampleInput: z.unknown().optional(),
   versionId: z.string().optional(),
+  dryRun: z.boolean().optional(), // default true — real side effects only on explicit opt-in
 });
 
 const StatusSchema = z.enum(["draft", "active", "disabled"]);

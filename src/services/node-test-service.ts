@@ -1,4 +1,6 @@
 import type { Connectors } from "../connectors";
+import { dryRunConnectors } from "../connectors/default";
+import { newId } from "../domain/ids";
 import { resolveInputs } from "../engine/expr";
 import type { Scope } from "../engine/expr";
 import { ApiError } from "../errors";
@@ -10,13 +12,15 @@ export interface TestNodeInput {
   nodeId: string;
   sampleInput?: unknown;
   versionId?: string;
+  /** Default true: use dry-run connectors so testing a node has no real side effects. */
+  dryRun?: boolean;
 }
 
 /** Runs a single node in isolation with sample input — n8n's "test step". */
 export class NodeTestService {
   constructor(
     private readonly store: Store,
-    private readonly connectors: Connectors,
+    private readonly realConnectors: Connectors,
   ) {}
 
   async testNode(ownerId: string, workflowId: string, input: TestNodeInput): Promise<NodeOutcome> {
@@ -36,17 +40,28 @@ export class NodeTestService {
     if (def.kind === "wait") return { data: { note: "wait nodes have no output to test" } };
     if (!def.execute) throw new ApiError(400, "no_runtime", `Node "${node.type}" has no runtime`);
 
-    const scope = buildScope(input.sampleInput);
-    const inputs = resolveInputs(node.params, scope);
+    const inputs = resolveInputs(node.params, buildScope(input.sampleInput));
+
+    // Validate resolved inputs so a missing/undefined value returns a clear error
+    // rather than silently coercing to "undefined" inside execute.
+    const parsed = def.inputSchema.safeParse(inputs);
+    if (!parsed.success) {
+      throw new ApiError(400, "invalid_inputs", "Resolved inputs failed validation", parsed.error.flatten());
+    }
+
+    // Dry-run by default: no real emails/HTTP/Slack from a "test". Real connectors
+    // only on explicit opt-in. A fresh workflowRunId isolates the KV namespace
+    // (idempotency keys) from real runs and from other tenants' tests.
+    const dryRun = input.dryRun ?? true;
     return def.execute({
-      inputs,
+      inputs: parsed.data as Record<string, unknown>,
       params: node.params,
       rt: {
         kv: this.store.kv,
         credentials: this.store.credentials,
-        connectors: this.connectors,
-        runId: "test",
-        workflowRunId: "test",
+        connectors: dryRun ? dryRunConnectors() : this.realConnectors,
+        runId: `test_${newId()}`,
+        workflowRunId: `test_${newId()}`,
       },
     });
   }
