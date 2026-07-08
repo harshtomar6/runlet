@@ -134,15 +134,21 @@ test("ai.agent gates a requireApproval tool: denied → not run, fed back to mod
     },
   };
 
-  // DENIED
+  // DENIED with feedback → feedback is surfaced to the model in the tool result
   const denied = await aiAgent.execute!({
     inputs: { model: "m", prompt: "go", tools: [{ tool: "data.set", requireApproval: true }], maxSteps: 5 },
     params: {},
-    rt: rt({ connectors, waitForEvent: async () => ({ timedOut: false, data: { approved: false } }) }),
+    rt: rt({
+      connectors,
+      // mirrors POST /approvals { approved:false, data:{ feedback } } → eventData
+      waitForEvent: async () => ({ timedOut: false, data: { approved: false, data: { feedback: "make it shorter" } } }),
+    }),
   });
   const dData = denied.data as { toolCalls: Array<{ approved?: boolean; result: string }> };
   assert.equal(dData.toolCalls[0]?.approved, false);
-  assert.match(dData.toolCalls[0]?.result ?? "", /denied by human/);
+  const dResult = dData.toolCalls[0]?.result ?? "";
+  assert.match(dResult, /Revise using the feedback/);
+  assert.match(dResult, /make it shorter/); // human feedback reached the model
 
   // APPROVED
   round = 0;

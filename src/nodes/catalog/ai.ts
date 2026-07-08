@@ -253,16 +253,24 @@ export const aiAgent = defineNode({
             args: call.args,
           });
           const decision = await wait(eventId, approvalTimeoutSec);
-          const approved =
-            !decision.timedOut && (decision.data as { approved?: boolean } | null)?.approved !== false;
+          const detail = decision.data as { approved?: boolean; data?: unknown; feedback?: unknown } | null;
+          const approved = !decision.timedOut && detail?.approved !== false;
           if (!approved) {
+            // Surface the human's feedback (POST /approvals { data }) to the model
+            // so it revises and re-attempts, rather than being denied blindly.
+            const feedback = detail?.data ?? detail?.feedback ?? null;
             const content = JSON.stringify({
               approved: false,
-              error: decision.timedOut ? "approval timed out" : "denied by human",
+              message: decision.timedOut
+                ? "Approval timed out; the tool was not run."
+                : feedback
+                  ? "A human denied this call and requested changes. Revise using the feedback and try again."
+                  : "A human denied this call.",
+              feedback,
             });
             trace.push({ tool: mapping.nodeType, args: call.args, result: content, approved: false });
             messages.push({ role: "tool", tool_call_id: call.id, content });
-            continue; // tell the model it was denied; don't run the tool
+            continue; // tell the model it was denied (+ feedback); don't run the tool
           }
         }
 
