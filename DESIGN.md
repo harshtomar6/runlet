@@ -346,6 +346,7 @@ Node `inputSchema` (Zod) is converted to **JSON Schema** (`zod-to-json-schema`) 
 Implemented:
 - **Triggers:** `trigger.webhook`, `trigger.schedule`, `trigger.event`, `trigger.manual`
 - **Actions:** `http.request` (SSRF-safe), `email.send` (Resend), `email.smtp` (nodemailer), `slack.post`
+- **AI:** `ai.complete` (OpenRouter — any model via one credential)
 - **Control:** `control.wait`, `control.if`, `control.switch`, `control.loop`, `control.filter`
 - **Data:** `data.set`, `data.transform`
 - **Utility:** `util.log`

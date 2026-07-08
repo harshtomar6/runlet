@@ -41,6 +41,9 @@ const EnvSchema = z.object({
   RESEND_API_KEY: z.string().optional(),
   EMAIL_FROM: z.string().default("automations@example.com"),
 
+  // OpenRouter — fallback for ai.complete when no `openrouter` credential is set.
+  OPENROUTER_API_KEY: z.string().optional(),
+
   // Public base URL of this service (for QStash schedule destinations).
   PUBLIC_BASE_URL: z.string().url().optional(),
   // Shared secret protecting internal trigger endpoints (schedule ticks).
