@@ -2,6 +2,7 @@ import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import type { AiMessage, ToolDef } from "../../connectors";
 import type { ConversationMessage } from "../../domain/types";
+import { sendAlert } from "../../observability/alert";
 import { defineNode } from "../define";
 import { getNode } from "../registry";
 
@@ -173,29 +174,43 @@ export const aiAgent = defineNode({
     model: z.string().min(1),
     prompt: z.string().min(1),
     system: z.string().optional(),
-    // Allowlist: only these node types are callable as tools.
+    // Allowlist: only these node types are callable as tools. Set
+    // `requireApproval` to pause for a human before that tool runs.
     tools: z
-      .array(z.object({ tool: z.string().min(1), credentialId: z.string().optional() }))
+      .array(
+        z.object({
+          tool: z.string().min(1),
+          credentialId: z.string().optional(),
+          requireApproval: z.boolean().optional(),
+        }),
+      )
       .default([]),
     maxSteps: z.number().int().positive().max(20).default(6),
+    approvalTimeoutSec: z.number().int().positive().max(2_592_000).default(86_400),
     credentialId: z.string().optional(),
   }),
   outputs: ["success", "error"],
   credentials: ["openrouter"],
   durable: true, // each round + tool call is a checkpointed sub-step
   execute: async ({ inputs, params, rt }) => {
-    const toolConfigs = (inputs.tools ?? []) as Array<{ tool: string; credentialId?: string }>;
+    const toolConfigs = (inputs.tools ?? []) as Array<{
+      tool: string;
+      credentialId?: string;
+      requireApproval?: boolean;
+    }>;
     const maxSteps = (inputs.maxSteps as number | undefined) ?? 6;
+    const approvalTimeoutSec = (inputs.approvalTimeoutSec as number | undefined) ?? 86_400;
     const step = rt.step ?? (<T>(_id: string, fn: () => Promise<T>) => fn()); // inline fallback
+    const wait = rt.waitForEvent ?? (async () => ({ timedOut: false, data: { approved: true, auto: true } }));
 
     // Build tool schemas from the allowlisted nodes (schema = node inputSchema).
-    const bySanitized = new Map<string, { nodeType: string; credentialId?: string }>();
+    const bySanitized = new Map<string, { nodeType: string; credentialId?: string; requireApproval?: boolean }>();
     const toolDefs: ToolDef[] = [];
     for (const tc of toolConfigs) {
       const def = getNode(tc.tool);
       if (!def) throw new Error(`ai.agent: unknown tool node "${tc.tool}"`);
       const name = toolName(tc.tool);
-      bySanitized.set(name, { nodeType: tc.tool, credentialId: tc.credentialId });
+      bySanitized.set(name, { nodeType: tc.tool, credentialId: tc.credentialId, requireApproval: tc.requireApproval });
       toolDefs.push({
         name,
         description: def.description ?? def.label,
@@ -208,7 +223,7 @@ export const aiAgent = defineNode({
       ...(inputs.system ? [{ role: "system", content: String(inputs.system) }] : []),
       { role: "user", content: String(inputs.prompt) },
     ];
-    const trace: Array<{ tool: string; args: unknown; result: string }> = [];
+    const trace: Array<{ tool: string; args: unknown; result: string; approved?: boolean }> = [];
     let text = "";
 
     for (let round = 0; round < maxSteps; round++) {
@@ -226,11 +241,41 @@ export const aiAgent = defineNode({
         break;
       }
       for (const call of res.toolCalls) {
+        const mapping = bySanitized.get(call.name);
+
+        // Human-in-the-loop: pause before a side-effecting tool if configured.
+        if (mapping?.requireApproval) {
+          const eventId = `approval:${rt.runId}:${rt.stepId}:tool:${round}:${call.id}`;
+          await sendAlert("Tool approval requested", {
+            eventId,
+            runId: rt.runId,
+            tool: mapping.nodeType,
+            args: call.args,
+          });
+          const decision = await wait(eventId, approvalTimeoutSec);
+          const approved =
+            !decision.timedOut && (decision.data as { approved?: boolean } | null)?.approved !== false;
+          if (!approved) {
+            const content = JSON.stringify({
+              approved: false,
+              error: decision.timedOut ? "approval timed out" : "denied by human",
+            });
+            trace.push({ tool: mapping.nodeType, args: call.args, result: content, approved: false });
+            messages.push({ role: "tool", tool_call_id: call.id, content });
+            continue; // tell the model it was denied; don't run the tool
+          }
+        }
+
         // Each tool call is its own durable step too.
         const content = await step(`tool-${round}-${call.id}`, () =>
           runTool(bySanitized, call, rt, `${rt.stepId}:tool:${round}:${call.id}`),
         );
-        trace.push({ tool: bySanitized.get(call.name)?.nodeType ?? call.name, args: call.args, result: content });
+        trace.push({
+          tool: mapping?.nodeType ?? call.name,
+          args: call.args,
+          result: content,
+          approved: mapping?.requireApproval ? true : undefined,
+        });
         messages.push({ role: "tool", tool_call_id: call.id, content });
       }
     }
@@ -240,7 +285,7 @@ export const aiAgent = defineNode({
 });
 
 async function runTool(
-  bySanitized: Map<string, { nodeType: string; credentialId?: string }>,
+  bySanitized: Map<string, { nodeType: string; credentialId?: string; requireApproval?: boolean }>,
   call: { name: string; args: Record<string, unknown> },
   rt: import("../define").NodeRuntime,
   stepId: string,
