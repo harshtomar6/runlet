@@ -85,7 +85,7 @@ All authed calls send `x-owner-id` (placeholder auth). Build the "install → 7-
 curl -X POST localhost:3000/credentials -H 'x-owner-id: acme' \
   -H 'content-type: application/json' \
   -d '{"type":"resend","secret":{"apiKey":"re_..."}}'
-# → { data: { id: "cred_...", type: "resend" } }
+# → { data: { id: "<credentialId>", type: "resend" } }
 ```
 
 **b. Create a workflow** (event-triggered; two emails with a wait — extend to 7)
@@ -106,38 +106,38 @@ curl -X POST localhost:3000/workflows -H 'x-owner-id: acme' \
       { "from": {"nodeId":"w","port":"out"},      "to": {"nodeId":"e2","port":"in"} }
     ]
   }'
-# → { data: { workflow: {id: "wf_..."}, version: {id: "wv_..."} } }
+# → { data: { workflow: {id: "<workflowId>"}, version: {id: "<versionId>"} } }
 ```
 
 **c. Validate & activate**
 ```bash
-curl -X POST localhost:3000/workflows/wf_.../validate -H 'x-owner-id: acme'    # { ok: true, errors: [] }
-curl -X POST localhost:3000/workflows/wf_.../activate -H 'x-owner-id: acme' \
-  -H 'content-type: application/json' -d '{"versionId":"wv_..."}'
+curl -X POST localhost:3000/workflows/<workflowId>/validate -H 'x-owner-id: acme'    # → { "data": { "ok": true, "errors": [] } }
+curl -X POST localhost:3000/workflows/<workflowId>/activate -H 'x-owner-id: acme' \
+  -H 'content-type: application/json' -d '{"versionId":"<versionId>"}'
 ```
 
 **d. Subscribe the event → workflow, then send an event**
 ```bash
 curl -X POST localhost:3000/subscriptions -H 'x-owner-id: acme' \
-  -H 'content-type: application/json' -d '{"eventType":"app.installed","workflowId":"wf_..."}'
+  -H 'content-type: application/json' -d '{"eventType":"app.installed","workflowId":"<workflowId>"}'
 
 curl -X POST localhost:3000/events -H 'x-owner-id: acme' \
   -H 'content-type: application/json' \
   -d '{"type":"app.installed","payload":{"email":"user@example.com"}}'
 # → { data: { triggered: [ { workflowId, runId } ] } }
 ```
-(Or fire directly: `POST /hooks/wf_...`, or run manually: `POST /workflows/wf_.../execute` with `{"input":{...}}`.)
+(Or fire directly: `POST /hooks/<workflowId>`, or run manually: `POST /workflows/<workflowId>/execute` with `{"input":{...}}`.)
 
 **e. Observe**
 ```bash
-curl 'localhost:3000/runs?workflowId=wf_...' -H 'x-owner-id: acme'   # summaries + stepCount
-curl localhost:3000/runs/run_... -H 'x-owner-id: acme'              # run + per-node timeline
-curl 'localhost:3000/metrics?workflowId=wf_...' -H 'x-owner-id: acme'
+curl 'localhost:3000/runs?workflowId=<workflowId>' -H 'x-owner-id: acme'   # summaries + stepCount
+curl localhost:3000/runs/<runId> -H 'x-owner-id: acme'              # run + per-node timeline
+curl 'localhost:3000/metrics?workflowId=<workflowId>' -H 'x-owner-id: acme'
 ```
 
 **f. Test a single node** (n8n-style)
 ```bash
-curl -X POST localhost:3000/workflows/wf_.../test-node -H 'x-owner-id: acme' \
+curl -X POST localhost:3000/workflows/<workflowId>/test-node -H 'x-owner-id: acme' \
   -H 'content-type: application/json' \
   -d '{"nodeId":"e1","sampleInput":{"email":"test@example.com"}}'
 ```
