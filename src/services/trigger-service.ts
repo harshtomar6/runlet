@@ -1,11 +1,11 @@
 import { ApiError } from "../errors";
 import type { Dispatcher } from "../engine/dispatch";
-import { NotFoundError } from "../ports/errors";
 import type { Store } from "../ports";
 
 /**
- * Starts runs from trigger sources (webhooks, events, schedule ticks). Resolves
- * the runnable version (active, else latest) and is NOT owner-scoped — callers
+ * Starts runs from trigger sources (webhooks, events, schedule ticks). Only
+ * ACTIVE workflows are triggerable, and always at their pinned active version
+ * (§9) — never a draft or unactivated latest. NOT owner-scoped; callers
  * authenticate the source (signature / internal secret / owner event auth).
  */
 export class TriggerService {
@@ -16,11 +16,13 @@ export class TriggerService {
 
   async runWorkflowNow(workflowId: string, trigger: unknown): Promise<{ runId: string }> {
     const wf = await this.store.workflows.getWorkflow(workflowId);
-    if (wf.status === "disabled") {
-      throw new ApiError(409, "workflow_disabled", `Workflow ${workflowId} is disabled`);
+    if (wf.status !== "active" || !wf.activeVersionId) {
+      throw new ApiError(
+        409,
+        "workflow_not_active",
+        `Workflow ${workflowId} is not active (status=${wf.status})`,
+      );
     }
-    const versionId = wf.activeVersionId ?? (await this.store.workflows.listVersions(workflowId))[0]?.id;
-    if (!versionId) throw new NotFoundError("WorkflowVersion", `${workflowId}:latest`);
-    return this.dispatcher.start({ workflowId, versionId, trigger });
+    return this.dispatcher.start({ workflowId, versionId: wf.activeVersionId, trigger });
   }
 }

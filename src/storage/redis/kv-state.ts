@@ -15,8 +15,10 @@ export class RedisKVState implements KVState {
     return await redis().get<string>(key);
   }
 
-  async incr(key: string): Promise<number> {
-    return await redis().incr(key);
+  async incr(key: string, ttlSec?: number): Promise<number> {
+    const n = await redis().incr(key);
+    if (ttlSec && n === 1) await redis().expire(key, ttlSec); // window the counter
+    return n;
   }
 
   async del(key: string): Promise<void> {

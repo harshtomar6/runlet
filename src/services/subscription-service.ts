@@ -37,18 +37,33 @@ export class SubscriptionService {
     await this.store.subscriptions.delete(id, ownerId);
   }
 
-  /** Fan out an incoming event to every subscribed workflow for this owner. */
+  /**
+   * Fan out an incoming event to every subscribed workflow for this owner.
+   * One bad subscription (disabled/never-activated/missing) must not block the
+   * rest, so each dispatch is isolated and failures are collected (§9 "start each").
+   */
   async dispatchEvent(
     ownerId: string,
     eventType: string,
     payload: unknown,
-  ): Promise<{ triggered: Array<{ workflowId: string; runId: string }> }> {
+  ): Promise<{
+    triggered: Array<{ workflowId: string; runId: string }>;
+    failed: Array<{ workflowId: string; error: string }>;
+  }> {
     const subs = await this.store.subscriptions.listByOwnerAndEventType(ownerId, eventType);
     const triggered: Array<{ workflowId: string; runId: string }> = [];
+    const failed: Array<{ workflowId: string; error: string }> = [];
     for (const sub of subs) {
-      const { runId } = await this.triggers.runWorkflowNow(sub.workflowId, payload);
-      triggered.push({ workflowId: sub.workflowId, runId });
+      try {
+        const { runId } = await this.triggers.runWorkflowNow(sub.workflowId, payload);
+        triggered.push({ workflowId: sub.workflowId, runId });
+      } catch (err) {
+        failed.push({
+          workflowId: sub.workflowId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
-    return { triggered };
+    return { triggered, failed };
   }
 }

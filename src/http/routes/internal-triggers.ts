@@ -13,10 +13,13 @@ const triggers = new TriggerService(store, dispatcher);
 export const internalTriggers = new Hono<AppEnv>();
 
 internalTriggers.post("/tick/:workflowId", async (c) => {
-  if (env.INTERNAL_SECRET) {
-    if (c.req.header("x-internal-secret") !== env.INTERNAL_SECRET) {
-      throw new ApiError(401, "unauthorized", "Invalid internal secret");
-    }
+  // Fail closed: this endpoint starts runs by workflow id, so it must never be
+  // publicly callable. If no secret is configured, reject outright.
+  if (!env.INTERNAL_SECRET) {
+    throw new ApiError(503, "internal_secret_unset", "INTERNAL_SECRET is not configured");
+  }
+  if (c.req.header("x-internal-secret") !== env.INTERNAL_SECRET) {
+    throw new ApiError(401, "unauthorized", "Invalid internal secret");
   }
   const { runId } = await triggers.runWorkflowNow(c.req.param("workflowId"), {
     scheduledAt: new Date().toISOString(),

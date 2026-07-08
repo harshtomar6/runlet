@@ -18,7 +18,7 @@ export class MemoryKVState implements KVState {
     return this.m.get(key) ?? null;
   }
 
-  async incr(key: string): Promise<number> {
+  async incr(key: string, _ttlSec?: number): Promise<number> {
     const n = Number(this.m.get(key) ?? "0") + 1;
     this.m.set(key, String(n));
     return n;

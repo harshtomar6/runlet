@@ -84,7 +84,7 @@ export interface KVState {
   setNX(key: string, val: string, ttlSec: number): Promise<boolean>; // locks / dedup
   set(key: string, val: string, ttlSec?: number): Promise<void>;
   get(key: string): Promise<string | null>;
-  incr(key: string): Promise<number>; // rate-limit counters
+  incr(key: string, ttlSec?: number): Promise<number>; // rate-limit counters (ttl set on first incr)
   del(key: string): Promise<void>;
 }
 
