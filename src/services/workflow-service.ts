@@ -129,6 +129,16 @@ export class WorkflowService {
     await this.store.workflows.setStatus(id, "disabled");
   }
 
+  /** The version a manual run should use: the active one, else the latest. */
+  async executableVersionId(ownerId: string, id: string): Promise<string> {
+    const wf = await this.get(ownerId, id);
+    if (wf.activeVersionId) return wf.activeVersionId;
+    const versions = await this.store.workflows.listVersions(id);
+    const latest = versions[0];
+    if (!latest) throw new NotFoundError("WorkflowVersion", `${id}:latest`);
+    return latest.id;
+  }
+
   private async resolveVersion(workflowId: string, versionId?: string): Promise<WorkflowVersion> {
     if (versionId) return this.store.workflows.getVersion(workflowId, versionId);
     const versions = await this.store.workflows.listVersions(workflowId);

@@ -11,9 +11,26 @@ export const emailSend = defineNode({
     to: z.string().min(1),
     templateId: z.string().min(1),
     vars: z.record(z.unknown()).optional(),
+    credentialId: z.string().optional(),
   }),
   outputs: ["success", "error"],
   credentials: ["resend"],
+  execute: async ({ inputs, params, rt }) => {
+    const to = String(inputs.to);
+    const templateId = String(inputs.templateId);
+    // Idempotent per (run, recipient, template) so retries don't double-send.
+    const idem = `email:${rt.workflowRunId}:${to}:${templateId}`;
+    if (!(await rt.kv.setNX(idem, "1", 86_400))) {
+      return { data: { skipped: true }, port: "success" };
+    }
+    const creds = params.credentialId ? await rt.credentials.get(String(params.credentialId)) : null;
+    const res = await rt.connectors.email.send(creds, {
+      to,
+      templateId,
+      vars: inputs.vars as Record<string, unknown> | undefined,
+    });
+    return { data: res, port: "success" };
+  },
 });
 
 export const slackPost = defineNode({
@@ -25,9 +42,18 @@ export const slackPost = defineNode({
   inputSchema: z.object({
     channel: z.string().min(1),
     text: z.string().min(1),
+    credentialId: z.string().optional(),
   }),
   outputs: ["success", "error"],
   credentials: ["slack"],
+  execute: async ({ inputs, params, rt }) => {
+    const creds = params.credentialId ? await rt.credentials.get(String(params.credentialId)) : null;
+    const res = await rt.connectors.slack.post(creds, {
+      channel: String(inputs.channel),
+      text: String(inputs.text),
+    });
+    return { data: res, port: "success" };
+  },
 });
 
 export const httpRequest = defineNode({
@@ -43,6 +69,15 @@ export const httpRequest = defineNode({
     body: z.unknown().optional(),
   }),
   outputs: ["success", "error"],
+  execute: async ({ inputs, rt }) => {
+    const res = await rt.connectors.http.request({
+      method: String(inputs.method ?? "GET"),
+      url: String(inputs.url),
+      headers: inputs.headers as Record<string, string> | undefined,
+      body: inputs.body,
+    });
+    return { data: res, port: "success" };
+  },
 });
 
 export const actionNodes = [emailSend, slackPost, httpRequest];

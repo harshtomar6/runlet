@@ -20,9 +20,15 @@ export const ifNode = defineNode({
   label: "If",
   description: "Branches on a boolean condition.",
   inputSchema: z.object({
-    condition: z.string().min(1), // expression evaluated at runtime (M3+)
+    // An expression (string) at config time that resolves to any truthy/falsy
+    // value at runtime — so the resolved input is validated as unknown.
+    condition: z.unknown(),
   }),
   outputs: ["true", "false"],
+  execute: async ({ inputs }) => {
+    const truthy = Boolean(inputs.condition);
+    return { data: { condition: truthy }, port: truthy ? "true" : "false" };
+  },
 });
 
 export const loop = defineNode({

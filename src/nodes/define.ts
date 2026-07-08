@@ -1,7 +1,30 @@
 import type { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
+import type { CredentialStore, KVState } from "../ports";
+import type { Connectors } from "../connectors";
 
 export type NodeKind = "trigger" | "action" | "wait" | "control";
+
+/** Runtime services handed to a node's execute function. */
+export interface NodeRuntime {
+  kv: KVState;
+  credentials: CredentialStore;
+  connectors: Connectors;
+  runId: string;
+  workflowRunId: string;
+}
+
+export interface NodeExecArgs {
+  inputs: Record<string, unknown>; // params with expressions resolved
+  params: Record<string, unknown>; // raw params
+  rt: NodeRuntime;
+}
+
+/** What a node returns: data passed downstream + optional chosen output port. */
+export interface NodeOutcome {
+  data?: unknown;
+  port?: string;
+}
 
 /**
  * A node type: its UI-facing metadata + input schema. The runtime `execute`
@@ -17,6 +40,8 @@ export interface NodeDefinition {
   inputSchema: z.ZodTypeAny;
   outputs: string[]; // edge output ports
   credentials?: string[]; // required credential types
+  /** Runtime behavior. Absent for pass-through trigger nodes and unimplemented types. */
+  execute?: (args: NodeExecArgs) => Promise<NodeOutcome>;
 }
 
 export interface CatalogEntry {

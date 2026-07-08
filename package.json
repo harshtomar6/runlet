@@ -12,12 +12,15 @@
     "start": "node dist/index.js",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test 'src/**/*.test.ts'",
+    "demo": "tsx scripts/demo-local.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.7",
     "@upstash/redis": "^1.34.3",
+    "@upstash/workflow": "^1.3.2",
     "drizzle-orm": "^0.36.4",
     "hono": "^4.6.14",
     "postgres": "^3.4.5",

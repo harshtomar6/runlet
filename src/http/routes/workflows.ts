@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { ActivateSchema, CreateWorkflowSchema, UpdateWorkflowSchema } from "../../domain/schemas";
 import { ApiError } from "../../errors";
+import { dispatcher } from "../../engine/dispatch";
 import { WorkflowService } from "../../services/workflow-service";
 import { store } from "../../storage/factory";
 import { auth } from "../middleware/auth";
@@ -88,4 +89,14 @@ workflows.post("/:id/activate", async (c) => {
 workflows.post("/:id/disable", async (c) => {
   await service.disable(c.get("ownerId"), c.req.param("id"));
   return ok(c, { disabled: true });
+});
+
+// Manual run. Dispatch mode (local vs qstash) is env-controlled.
+workflows.post("/:id/execute", async (c) => {
+  const id = c.req.param("id");
+  const raw = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+  const trigger = "input" in raw ? raw.input : raw;
+  const versionId = await service.executableVersionId(c.get("ownerId"), id);
+  const { runId } = await dispatcher.start({ workflowId: id, versionId, trigger });
+  return ok(c, { runId }, {}, 202);
 });
