@@ -58,7 +58,10 @@ in most setups — see [§7.3](#73-run-a-workflow)).
 
 ## 2. Base URL, auth & conventions
 
-- **Base URL:** the deployed service root (e.g. `http://localhost:3000` in dev).
+- **Base URL:** the deployed service root. When you fetch this document from
+  `/llms.txt`, the concrete base URL for that deployment is stated on the **first
+  line**; use it verbatim. Otherwise it's your own service root (e.g.
+  `http://localhost:3000` in dev).
 - **Content type:** `application/json` for all request bodies.
 - **Auth:** every endpoint except `/`, `/health`, `/node-types`, `/hooks/*` requires
   an **API key**. Send it as either header:
