@@ -2,8 +2,10 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { ActivateSchema, CreateWorkflowSchema, UpdateWorkflowSchema } from "../../domain/schemas";
 import { ApiError } from "../../errors";
+import { defaultConnectors } from "../../connectors/default";
 import { dispatcher } from "../../engine/dispatch";
 import { scheduleManager } from "../../engine/schedule";
+import { NodeTestService } from "../../services/node-test-service";
 import { WorkflowService } from "../../services/workflow-service";
 import { store } from "../../storage/factory";
 import { auth } from "../middleware/auth";
@@ -12,6 +14,13 @@ import { ok } from "../lib/respond";
 import type { AppEnv } from "../types";
 
 const service = new WorkflowService(store, scheduleManager);
+const nodeTests = new NodeTestService(store, defaultConnectors());
+
+const TestNodeSchema = z.object({
+  nodeId: z.string().min(1),
+  sampleInput: z.unknown().optional(),
+  versionId: z.string().optional(),
+});
 
 const StatusSchema = z.enum(["draft", "active", "disabled"]);
 const DEFAULT_LIMIT = 50;
@@ -73,6 +82,12 @@ workflows.get("/:id/versions", async (c) => {
   const page = all.slice(start, start + limit);
   const nextCursor = start + limit < all.length ? page[page.length - 1]?.id : undefined;
   return ok(c, page, nextCursor ? { cursor: nextCursor } : {});
+});
+
+workflows.post("/:id/test-node", async (c) => {
+  const input = await parseBody(c, TestNodeSchema);
+  const outcome = await nodeTests.testNode(c.get("ownerId"), c.req.param("id"), input);
+  return ok(c, outcome);
 });
 
 workflows.post("/:id/validate", async (c) => {
