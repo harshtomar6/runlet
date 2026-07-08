@@ -54,6 +54,8 @@ export class LocalDispatcher implements Dispatcher {
           kv: this.store.kv,
           credentials: this.store.credentials,
           connectors: defaultConnectors(),
+          conversations: this.store.conversations,
+          ownerId: input.ownerId,
         },
       });
       await this.store.events.updateRun(runId, {

@@ -1,6 +1,7 @@
 import type {
   ApiKey,
   ApiKeyMeta,
+  ConversationMessage,
   CredentialMeta,
   DecryptedSecret,
   EventSubscription,
@@ -115,11 +116,22 @@ export interface ApiKeyRepo {
   revoke(id: string, ownerId: string): Promise<void>;
 }
 
+/** Conversation memory for AI nodes (append-only turns, keyed per conversation). */
+export interface ConversationStore {
+  load(key: string, limit?: number): Promise<ConversationMessage[]>;
+  append(
+    key: string,
+    messages: ConversationMessage[],
+    opts?: { maxMessages?: number; ttlSec?: number },
+  ): Promise<void>;
+}
+
 export interface Store {
   workflows: WorkflowRepo;
   events: EventLog;
   credentials: CredentialStore;
   subscriptions: SubscriptionRepo;
   apiKeys: ApiKeyRepo;
+  conversations: ConversationStore;
   kv: KVState;
 }

@@ -7,6 +7,7 @@ import { LocalExecutionContext } from "./local-context";
 import { runWorkflow } from "./interpreter";
 import { MemoryEventSink } from "./sink";
 import { MemoryKVState } from "../storage/memory/kv-state";
+import { MemoryConversationStore } from "../storage/memory/conversation-store";
 import "../nodes";
 
 const nullCredentials: CredentialStore = {
@@ -30,7 +31,7 @@ async function run(def: WorkflowVersion, trigger: unknown) {
     def,
     trigger,
     sink,
-    rt: { kv: new MemoryKVState(), credentials: nullCredentials, connectors: dryRunConnectors() },
+    rt: { kv: new MemoryKVState(), credentials: nullCredentials, connectors: dryRunConnectors(), conversations: new MemoryConversationStore(), ownerId: "test" },
   });
   return { sink, exec };
 }

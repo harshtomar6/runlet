@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { dryRunConnectors } from "../../connectors/default";
 import type { DecryptedSecret } from "../../domain/types";
 import type { CredentialStore } from "../../ports";
+import { MemoryConversationStore } from "../../storage/memory/conversation-store";
 import { MemoryKVState } from "../../storage/memory/kv-state";
 import type { NodeExecArgs, NodeRuntime } from "../define";
 import { smtpSend } from "./actions";
@@ -28,6 +29,8 @@ function rt(): NodeRuntime {
     kv: new MemoryKVState(),
     credentials: nullCreds,
     connectors: dryRunConnectors(),
+    conversations: new MemoryConversationStore(),
+    ownerId: "o",
     runId: "r",
     workflowRunId: "wr",
     stepId: "s1",

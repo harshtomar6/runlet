@@ -1,6 +1,6 @@
 import type { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
-import type { CredentialStore, KVState } from "../ports";
+import type { ConversationStore, CredentialStore, KVState } from "../ports";
 import type { Connectors } from "../connectors";
 
 export type NodeKind = "trigger" | "action" | "wait" | "control";
@@ -10,6 +10,8 @@ export interface NodeRuntime {
   kv: KVState;
   credentials: CredentialStore;
   connectors: Connectors;
+  conversations: ConversationStore;
+  ownerId: string;
   runId: string;
   workflowRunId: string;
   /** Durable step id for this execution (iteration-scoped inside loops).

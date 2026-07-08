@@ -97,11 +97,39 @@ export interface AiTtsResult {
   dryRun: boolean;
 }
 
+/** A tool the model may call (OpenAI function-calling shape). */
+export interface ToolDef {
+  name: string;
+  description: string;
+  parameters: unknown; // JSON Schema
+}
+export interface ToolCall {
+  id: string;
+  name: string;
+  args: Record<string, unknown>;
+}
+
+export interface AiChatInput {
+  model: string;
+  messages: Array<Record<string, unknown>>; // OpenAI-format (may include tool_calls / tool role)
+  tools?: ToolDef[];
+  temperature?: number;
+  maxTokens?: number;
+}
+export interface AiChatResult {
+  message: Record<string, unknown>; // raw assistant message (push back for the next turn)
+  content: string;
+  toolCalls: ToolCall[];
+  dryRun: boolean;
+}
+
 export interface AiConnector {
   complete(creds: DecryptedSecret | null, input: AiInput): Promise<AiResult>;
   image(creds: DecryptedSecret | null, input: AiImageInput): Promise<AiImageResult>;
   transcribe(creds: DecryptedSecret | null, input: AiTranscribeInput): Promise<AiTranscribeResult>;
   tts(creds: DecryptedSecret | null, input: AiTtsInput): Promise<AiTtsResult>;
+  /** Low-level chat used by the agent loop: passes messages through, returns tool calls. */
+  chat(creds: DecryptedSecret | null, input: AiChatInput): Promise<AiChatResult>;
 }
 
 export interface Connectors {

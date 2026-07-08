@@ -60,6 +60,8 @@ export class NodeTestService {
         kv: this.store.kv,
         credentials: this.store.credentials,
         connectors: dryRun ? dryRunConnectors() : this.realConnectors,
+        conversations: this.store.conversations,
+        ownerId,
         runId: `test_${newId()}`,
         workflowRunId: `test_${newId()}`,
         stepId: `test_${newId()}:${node.id}`, // unique per invocation (repeatable tests)

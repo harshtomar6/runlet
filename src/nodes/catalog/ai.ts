@@ -1,6 +1,15 @@
 import { z } from "zod";
-import type { AiMessage } from "../../connectors";
+import { zodToJsonSchema } from "zod-to-json-schema";
+import type { AiMessage, ToolDef } from "../../connectors";
+import type { ConversationMessage } from "../../domain/types";
 import { defineNode } from "../define";
+import { getNode } from "../registry";
+
+const MEMORY_TTL_SEC = 60 * 60 * 24 * 30; // 30 days
+
+const memorySchema = z
+  .object({ key: z.string().min(1), window: z.number().int().positive().max(200).optional() })
+  .optional();
 
 export const aiComplete = defineNode({
   type: "ai.complete",
@@ -9,7 +18,7 @@ export const aiComplete = defineNode({
   category: "AI",
   label: "AI Complete",
   description:
-    "LLM completion via OpenRouter — any model (e.g. anthropic/claude-sonnet-4, openai/gpt-4o-mini). Requires an `openrouter` credential (or OPENROUTER_API_KEY).",
+    "LLM completion via OpenRouter — any model (e.g. anthropic/claude-sonnet-4). Optional conversation `memory` keyed per user. Requires an `openrouter` credential (or OPENROUTER_API_KEY).",
   inputSchema: z.object({
     model: z.string().min(1),
     prompt: z.string().optional(),
@@ -17,6 +26,7 @@ export const aiComplete = defineNode({
     messages: z
       .array(z.object({ role: z.enum(["system", "user", "assistant"]), content: z.string() }))
       .optional(),
+    memory: memorySchema, // { key, window } — persists turns across calls
     temperature: z.number().min(0).max(2).optional(),
     maxTokens: z.number().int().positive().optional(),
     credentialId: z.string().optional(),
@@ -25,14 +35,22 @@ export const aiComplete = defineNode({
   credentials: ["openrouter"],
   execute: async ({ inputs, params, rt }) => {
     const provided = inputs.messages as AiMessage[] | undefined;
+    const mem = inputs.memory as { key: string; window?: number } | undefined;
+    const window = mem?.window ?? 20;
+
+    // Owner-scoped memory key so conversations can't cross tenants.
+    const memKey = mem?.key ? `${rt.ownerId}:${mem.key}` : undefined;
+    const history: ConversationMessage[] = memKey ? await rt.conversations.load(memKey, window) : [];
+
     const messages: AiMessage[] =
       provided && provided.length > 0
         ? provided
         : [
             ...(inputs.system ? [{ role: "system" as const, content: String(inputs.system) }] : []),
-            { role: "user" as const, content: String(inputs.prompt ?? "") },
+            ...history,
+            ...(inputs.prompt !== undefined ? [{ role: "user" as const, content: String(inputs.prompt) }] : []),
           ];
-    if (!inputs.prompt && !(provided && provided.length > 0)) {
+    if (!provided?.length && inputs.prompt === undefined && history.length === 0) {
       throw new Error("ai.complete requires `prompt` or `messages`");
     }
 
@@ -43,6 +61,17 @@ export const aiComplete = defineNode({
       temperature: inputs.temperature as number | undefined,
       maxTokens: inputs.maxTokens as number | undefined,
     });
+
+    if (memKey && inputs.prompt !== undefined) {
+      await rt.conversations.append(
+        memKey,
+        [
+          { role: "user", content: String(inputs.prompt) },
+          { role: "assistant", content: res.text },
+        ],
+        { maxMessages: window * 2, ttlSec: MEMORY_TTL_SEC },
+      );
+    }
     return { data: res, port: "success" };
   },
 });
@@ -130,4 +159,103 @@ export const aiTts = defineNode({
   },
 });
 
-export const aiNodes = [aiComplete, aiImage, aiTranscribe, aiTts];
+const toolName = (nodeType: string): string => nodeType.replace(/[^a-zA-Z0-9_-]/g, "_");
+
+export const aiAgent = defineNode({
+  type: "ai.agent",
+  app: "ai",
+  kind: "action",
+  category: "AI",
+  label: "AI Agent",
+  description:
+    "Runs a bounded tool-calling loop: the model may call the allowed catalog nodes as tools until it answers. Requires an `openrouter` credential.",
+  inputSchema: z.object({
+    model: z.string().min(1),
+    prompt: z.string().min(1),
+    system: z.string().optional(),
+    // Allowlist: only these node types are callable as tools.
+    tools: z
+      .array(z.object({ tool: z.string().min(1), credentialId: z.string().optional() }))
+      .default([]),
+    maxSteps: z.number().int().positive().max(20).default(6),
+    credentialId: z.string().optional(),
+  }),
+  outputs: ["success", "error"],
+  credentials: ["openrouter"],
+  execute: async ({ inputs, params, rt }) => {
+    const toolConfigs = (inputs.tools ?? []) as Array<{ tool: string; credentialId?: string }>;
+    const maxSteps = (inputs.maxSteps as number | undefined) ?? 6;
+
+    // Build tool schemas from the allowlisted nodes (schema = node inputSchema).
+    const bySanitized = new Map<string, { nodeType: string; credentialId?: string }>();
+    const toolDefs: ToolDef[] = [];
+    for (const tc of toolConfigs) {
+      const def = getNode(tc.tool);
+      if (!def) throw new Error(`ai.agent: unknown tool node "${tc.tool}"`);
+      const name = toolName(tc.tool);
+      bySanitized.set(name, { nodeType: tc.tool, credentialId: tc.credentialId });
+      toolDefs.push({
+        name,
+        description: def.description ?? def.label,
+        parameters: zodToJsonSchema(def.inputSchema),
+      });
+    }
+
+    const creds = params.credentialId ? await rt.credentials.get(String(params.credentialId)) : null;
+    const messages: Array<Record<string, unknown>> = [
+      ...(inputs.system ? [{ role: "system", content: String(inputs.system) }] : []),
+      { role: "user", content: String(inputs.prompt) },
+    ];
+    const trace: Array<{ tool: string; args: unknown; result: string }> = [];
+    let text = "";
+
+    for (let step = 0; step < maxSteps; step++) {
+      const res = await rt.connectors.ai.chat(creds, {
+        model: String(inputs.model),
+        messages,
+        tools: toolDefs.length > 0 ? toolDefs : undefined,
+      });
+      messages.push(res.message);
+      if (res.toolCalls.length === 0) {
+        text = res.content;
+        break;
+      }
+      for (const callIdx in res.toolCalls) {
+        const call = res.toolCalls[callIdx]!;
+        const content = await runTool(bySanitized, call, rt, `${rt.stepId}:tool:${step}:${call.id}`);
+        trace.push({ tool: bySanitized.get(call.name)?.nodeType ?? call.name, args: call.args, result: content });
+        messages.push({ role: "tool", tool_call_id: call.id, content });
+      }
+    }
+
+    return { data: { text, steps: trace.length, toolCalls: trace }, port: "success" };
+  },
+});
+
+async function runTool(
+  bySanitized: Map<string, { nodeType: string; credentialId?: string }>,
+  call: { name: string; args: Record<string, unknown> },
+  rt: import("../define").NodeRuntime,
+  stepId: string,
+): Promise<string> {
+  const mapping = bySanitized.get(call.name);
+  if (!mapping) return JSON.stringify({ error: `unknown tool "${call.name}"` });
+  const def = getNode(mapping.nodeType);
+  if (!def?.execute) return JSON.stringify({ error: `tool "${mapping.nodeType}" has no runtime` });
+  const parsed = def.inputSchema.safeParse(call.args);
+  if (!parsed.success) {
+    return JSON.stringify({ error: "invalid arguments", details: parsed.error.flatten() });
+  }
+  try {
+    const outcome = await def.execute({
+      inputs: parsed.data as Record<string, unknown>,
+      params: { credentialId: mapping.credentialId },
+      rt: { ...rt, stepId }, // unique stepId so tool idempotency keys don't collide
+    });
+    return JSON.stringify(outcome.data ?? { ok: true });
+  } catch (err) {
+    return JSON.stringify({ error: err instanceof Error ? err.message : String(err) });
+  }
+}
+
+export const aiNodes = [aiComplete, aiImage, aiTranscribe, aiTts, aiAgent];

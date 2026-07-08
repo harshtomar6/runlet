@@ -1,6 +1,8 @@
 import { env } from "../config/env";
 import type { DecryptedSecret } from "../domain/types";
 import type {
+  AiChatInput,
+  AiChatResult,
   AiConnector,
   AiImageInput,
   AiImageResult,
@@ -10,14 +12,20 @@ import type {
   AiTranscribeResult,
   AiTtsInput,
   AiTtsResult,
+  ToolCall,
 } from "./index";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
+interface RawToolCall {
+  id?: string;
+  function?: { name?: string; arguments?: string };
+}
 interface ChatMessage {
   content?: string;
   images?: Array<{ image_url?: { url?: string } }>;
   audio?: { data?: string };
+  tool_calls?: RawToolCall[];
 }
 interface ChatResponse {
   choices?: Array<{ message?: ChatMessage }>;
@@ -94,6 +102,45 @@ export class OpenRouterAiConnector implements AiConnector {
       messages: [{ role: "user", content: input.text }],
     });
     return { audio: json.choices?.[0]?.message?.audio?.data ?? "", format, model: input.model, dryRun: false };
+  }
+
+  async chat(creds: DecryptedSecret | null, input: AiChatInput): Promise<AiChatResult> {
+    const apiKey = keyOf(creds);
+    if (!apiKey) {
+      const message = { role: "assistant", content: "[dry-run: no OpenRouter API key]" };
+      return { message, content: String(message.content), toolCalls: [], dryRun: true };
+    }
+    const json = await call(apiKey, {
+      model: input.model,
+      messages: input.messages,
+      tools: input.tools?.map((t) => ({
+        type: "function",
+        function: { name: t.name, description: t.description, parameters: t.parameters },
+      })),
+      temperature: input.temperature,
+      max_tokens: input.maxTokens,
+    });
+    const msg = json.choices?.[0]?.message ?? { content: "" };
+    const toolCalls: ToolCall[] = (msg.tool_calls ?? []).map((tc, i) => ({
+      id: tc.id ?? `call_${i}`,
+      name: tc.function?.name ?? "",
+      args: safeJson(tc.function?.arguments),
+    }));
+    return {
+      message: msg as unknown as Record<string, unknown>,
+      content: msg.content ?? "",
+      toolCalls,
+      dryRun: false,
+    };
+  }
+}
+
+function safeJson(s: string | undefined): Record<string, unknown> {
+  if (!s) return {};
+  try {
+    return JSON.parse(s) as Record<string, unknown>;
+  } catch {
+    return {};
   }
 }
 

@@ -39,7 +39,13 @@ export const engineRoute = serve<EnginePayload>(
       def,
       trigger,
       sink: new LoggingEventSink(new StoreEventSink(store.events)),
-      rt: { kv: store.kv, credentials: store.credentials, connectors: defaultConnectors() },
+      rt: {
+        kv: store.kv,
+        credentials: store.credentials,
+        connectors: defaultConnectors(),
+        conversations: store.conversations,
+        ownerId: context.requestPayload.ownerId,
+      },
     });
 
     await store.events.updateRun(runId, {
