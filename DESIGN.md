@@ -188,12 +188,14 @@ The engine depends on **narrow, capability-minimal interfaces**. Ship one adapte
 
 ```ts
 interface WorkflowRepo {
-  getVersion(workflowId: string, versionId: string): Promise<WorkflowVersion>;
-  createVersion(v: WorkflowVersion): Promise<void>;      // immutable
-  activate(workflowId: string, versionId: string): Promise<void>; // atomic
   getWorkflow(id: string): Promise<Workflow>;
   list(ownerId: string, filter?: WorkflowFilter): Promise<Workflow[]>;
   setStatus(id: string, status: WorkflowStatus): Promise<void>;
+  putWorkflow(w: Workflow): Promise<void>;               // upsert header fields
+  getVersion(workflowId: string, versionId: string): Promise<WorkflowVersion>;
+  listVersions(workflowId: string): Promise<WorkflowVersion[]>; // newest first
+  createVersion(v: WorkflowVersion): Promise<void>;      // immutable
+  activate(workflowId: string, versionId: string): Promise<void>; // atomic
 }
 
 interface EventLog {
@@ -207,8 +209,9 @@ interface EventLog {
 
 interface CredentialStore {
   get(id: string): Promise<DecryptedSecret>;              // decrypts internally
-  put(c: EncryptedCredential): Promise<void>;
-  list(ownerId: string): Promise<CredentialMeta[]>;       // never returns secret material
+  put(input: { id; ownerId; type; secret }): Promise<void>; // encrypts internally
+  list(ownerId: string): Promise<CredentialMeta[]>;       // metadata only, never secret material
+  delete(id: string): Promise<void>;
 }
 
 interface KVState {
