@@ -346,7 +346,7 @@ Node `inputSchema` (Zod) is converted to **JSON Schema** (`zod-to-json-schema`) 
 Implemented:
 - **Triggers:** `trigger.webhook`, `trigger.schedule`, `trigger.event`, `trigger.manual`
 - **Actions:** `http.request` (SSRF-safe), `email.send` (Resend), `email.smtp` (nodemailer), `slack.post`
-- **AI:** `ai.complete` (OpenRouter — any model via one credential)
+- **AI:** `ai.complete`, `ai.image`, `ai.transcribe`, `ai.tts` — all via OpenRouter (one `openrouter` credential, model-dependent). Video generation isn't offered by OpenRouter → needs a dedicated provider.
 - **Control:** `control.wait`, `control.if`, `control.switch`, `control.loop`, `control.filter`
 - **Data:** `data.set`, `data.transform`
 - **Utility:** `util.log`

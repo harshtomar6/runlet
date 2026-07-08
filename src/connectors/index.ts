@@ -62,8 +62,46 @@ export interface AiResult {
   dryRun: boolean;
 }
 
+export interface AiImageInput {
+  model: string;
+  prompt: string;
+}
+export interface AiImageResult {
+  images: string[]; // image URLs or data: URLs
+  model: string;
+  dryRun: boolean;
+}
+
+export interface AiTranscribeInput {
+  model: string;
+  audio: string; // base64-encoded audio
+  format: string; // "mp3" | "wav" | ...
+  prompt?: string;
+}
+export interface AiTranscribeResult {
+  text: string;
+  model: string;
+  dryRun: boolean;
+}
+
+export interface AiTtsInput {
+  model: string;
+  text: string;
+  voice?: string;
+  format?: string; // "mp3" | "wav" | ...
+}
+export interface AiTtsResult {
+  audio: string; // base64-encoded audio
+  format: string;
+  model: string;
+  dryRun: boolean;
+}
+
 export interface AiConnector {
   complete(creds: DecryptedSecret | null, input: AiInput): Promise<AiResult>;
+  image(creds: DecryptedSecret | null, input: AiImageInput): Promise<AiImageResult>;
+  transcribe(creds: DecryptedSecret | null, input: AiTranscribeInput): Promise<AiTranscribeResult>;
+  tts(creds: DecryptedSecret | null, input: AiTtsInput): Promise<AiTtsResult>;
 }
 
 export interface Connectors {
