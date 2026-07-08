@@ -48,7 +48,12 @@ rewrites all paths to it.
 vercel deploy   # or connect the repo in the Vercel dashboard
 ```
 
-- Runtime: Node (`export const runtime = "nodejs"` in the entry). `DB_DRIVER=postgres`.
+- Runtime: Node (`export const runtime = "nodejs"` in the entry).
+- **`DB_DRIVER=neon`** (recommended on Vercel). Serverless functions don't suit
+  persistent TCP pools, so the `postgres` (postgres.js/TCP) driver can **hang** on
+  connect; the Neon HTTP driver (`@neondatabase/serverless`) avoids TCP entirely.
+  Use a Neon `DATABASE_URL` (the **pooled** `-pooler` host is fine). If you must
+  use `DB_DRIVER=postgres`, a stalled connect now fails fast (10s) instead of hanging.
 - Set env vars in Project Settings. `ENGINE_URL=https://<proj>.vercel.app/engine`.
 - Note: serverless functions are request-scoped — durable steps are handled by
   QStash calling back into `/engine`, so this is fine.
