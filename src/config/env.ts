@@ -53,6 +53,15 @@ const EnvSchema = z.object({
   SLACK_ALERT_WEBHOOK: z.string().url().optional(),
   SENTRY_DSN: z.string().url().optional(),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
+}).superRefine((val, ctx) => {
+  // Fail closed: the app must never boot with auth bypassed in production.
+  if (val.NODE_ENV === "production" && val.AUTH_DEV_OWNER) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["AUTH_DEV_OWNER"],
+      message: "AUTH_DEV_OWNER must not be set when NODE_ENV=production (it disables authentication)",
+    });
+  }
 });
 
 export type Env = z.infer<typeof EnvSchema>;

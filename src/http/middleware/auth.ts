@@ -20,8 +20,9 @@ export const auth: MiddlewareHandler<AppEnv> = async (c, next) => {
     return next();
   }
 
-  const header = c.req.header("authorization");
-  const key = header?.startsWith("Bearer ") ? header.slice(7) : c.req.header("x-api-key");
+  // Auth scheme token is case-insensitive per RFC 6750/7235.
+  const bearer = c.req.header("authorization")?.match(/^Bearer\s+(.+)$/i);
+  const key = bearer ? bearer[1] : c.req.header("x-api-key");
   if (!key) throw new ApiError(401, "unauthorized", "Missing API key (Authorization: Bearer <key>)");
 
   const result = await apiKeys.verify(key);

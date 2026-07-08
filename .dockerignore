@@ -1,0 +1,11 @@
+# Never bake secrets or bulky/local artifacts into the image layer.
+.env
+.env.*
+!.env.example
+.git
+.gitignore
+node_modules
+dist
+*.log
+.DS_Store
+.github
