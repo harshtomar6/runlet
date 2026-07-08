@@ -49,6 +49,13 @@ const EnvSchema = z.object({
   // "qstash" enqueues a durable run to the engine endpoint.
   DISPATCH_MODE: z.enum(["local", "qstash"]).default("local"),
   QSTASH_TOKEN: z.string().optional(),
+  // Signature-verification keys read by @upstash/workflow's serve() on /engine.
+  // The SDK reads these from process.env directly; declared here for validation
+  // + discoverability. Required in qstash mode (see superRefine below).
+  QSTASH_CURRENT_SIGNING_KEY: z.string().optional(),
+  QSTASH_NEXT_SIGNING_KEY: z.string().optional(),
+  // Only for the local QStash dev server; unset in production.
+  QSTASH_URL: z.string().url().optional(),
 
   // Email provider (Resend) — optional; without it, email.send is a dry-run.
   RESEND_API_KEY: z.string().optional(),
@@ -82,6 +89,19 @@ const EnvSchema = z.object({
       path: ["AUTH_DEV_OWNER"],
       message: "AUTH_DEV_OWNER must not be set when NODE_ENV=production (it disables authentication)",
     });
+  }
+  // Fail closed: in production qstash mode, the /engine endpoint MUST verify QStash
+  // signatures — otherwise it's publicly invocable. Require both signing keys.
+  if (val.NODE_ENV === "production" && val.DISPATCH_MODE === "qstash") {
+    for (const key of ["QSTASH_CURRENT_SIGNING_KEY", "QSTASH_NEXT_SIGNING_KEY"] as const) {
+      if (!val[key]) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [key],
+          message: `${key} is required when NODE_ENV=production and DISPATCH_MODE=qstash (it verifies inbound QStash requests to /engine)`,
+        });
+      }
+    }
   }
 });
 

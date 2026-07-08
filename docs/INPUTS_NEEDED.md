@@ -12,7 +12,7 @@ None of these are needed for local dev. Provision them when you deploy.
 |---|---|---|
 | **Neon** (or any Postgres) | Definitions, runs, events, credentials, subscriptions | `DATABASE_URL` |
 | **Upstash Redis** | Hot state (idempotency, locks, schedule ids) | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` |
-| **Upstash QStash** | Durable execution + schedules (`DISPATCH_MODE=qstash`) | `QSTASH_TOKEN` |
+| **Upstash QStash** | Durable execution + schedules (`DISPATCH_MODE=qstash`) | `QSTASH_TOKEN` (publish); `QSTASH_CURRENT_SIGNING_KEY` + `QSTASH_NEXT_SIGNING_KEY` (verify inbound `/engine` requests — required in prod qstash mode) |
 | **Resend** (optional) | Real email sending; without it `email.send` is a dry-run | `RESEND_API_KEY`, `EMAIL_FROM` |
 | **Slack incoming webhook** (optional) | Failure alerts | `SLACK_ALERT_WEBHOOK` |
 | **Axiom** (optional) | Ship structured logs | `AXIOM_TOKEN`, `AXIOM_DATASET` |

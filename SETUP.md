@@ -70,7 +70,7 @@ cp .env.example .env
    pnpm db:migrate         # applies drizzle/*.sql
    ```
 2. **Upstash Redis** → `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`.
-3. **Upstash QStash** → `QSTASH_TOKEN`, and set `DISPATCH_MODE=qstash`.
+3. **Upstash QStash** → `QSTASH_TOKEN` plus `QSTASH_CURRENT_SIGNING_KEY` and `QSTASH_NEXT_SIGNING_KEY` (all on the QStash console page; the signing keys let `/engine` verify inbound requests), and set `DISPATCH_MODE=qstash`.
 4. **Public URL** → deploy (below), then set `PUBLIC_BASE_URL=https://your-app` and `ENGINE_URL=https://your-app/engine`.
 5. **Generate secrets**:
    ```bash
@@ -179,7 +179,7 @@ curl -X POST localhost:3000/workflows/<workflowId>/test-node -H "authorization: 
 
 ## 6. Production checklist
 - [ ] `AUTH_DEV_OWNER` **unset**; API keys minted per owner (`pnpm create-api-key`)
-- [ ] `DISPATCH_MODE=qstash`, `QSTASH_TOKEN`, `PUBLIC_BASE_URL`, `ENGINE_URL` set
+- [ ] `DISPATCH_MODE=qstash`, `QSTASH_TOKEN`, `QSTASH_CURRENT_SIGNING_KEY`, `QSTASH_NEXT_SIGNING_KEY`, `PUBLIC_BASE_URL`, `ENGINE_URL` set
 - [ ] `pnpm db:migrate` run against prod Postgres
 - [ ] `CREDENTIAL_ENC_KEY` stored securely (KMS?) and backed up
 - [ ] `INTERNAL_SECRET` + `WEBHOOK_SECRET` set
