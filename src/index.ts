@@ -11,5 +11,5 @@ app.use("/ui/*", serveStatic({ root: "./public" }));
 
 serve({ fetch: app.fetch, port: env.PORT }, (info) => {
   // eslint-disable-next-line no-console
-  console.log(`app-automations listening on http://localhost:${info.port}  ·  dev UI: /ui`);
+  console.log(`Runlet listening on http://localhost:${info.port}  ·  dev UI: /ui`);
 });

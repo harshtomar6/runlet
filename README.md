@@ -1,4 +1,4 @@
-# app-automations
+# Runlet
 
 A headless, n8n-style workflow automation engine built on **Upstash Workflow** (durable execution over QStash). Workflows are **data** (a graph of nodes) interpreted by a single generic engine, with **UI-agnostic APIs** so any front-end can build, run, and observe automations.
 

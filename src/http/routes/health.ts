@@ -5,7 +5,7 @@ export const health = new Hono();
 health.get("/", (c) =>
   c.json({
     status: "ok",
-    service: "app-automations",
+    service: "runlet",
     ts: new Date().toISOString(),
   }),
 );

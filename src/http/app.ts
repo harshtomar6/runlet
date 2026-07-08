@@ -26,7 +26,7 @@ export function createApp(): Hono<AppEnv> {
   app.use("*", requestId);
   app.onError(onError);
 
-  app.get("/", (c) => c.json({ name: "app-automations", version: "0.1.0" }));
+  app.get("/", (c) => c.json({ name: "runlet", version: "0.1.0" }));
   app.route("/health", health);
   app.route("/node-types", nodeTypes); // public catalog
   app.route("/workflows", workflows); // authed (x-owner-id)
