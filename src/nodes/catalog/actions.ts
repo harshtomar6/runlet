@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { slackReplyEventId } from "../../services/slack-events";
 import { defineNode } from "../define";
 
 export const emailSend = defineNode({
@@ -133,4 +134,36 @@ export const smtpSend = defineNode({
   },
 });
 
-export const actionNodes = [emailSend, smtpSend, slackPost, httpRequest];
+export const slackWaitForReply = defineNode({
+  type: "slack.waitForReply",
+  app: "slack",
+  kind: "control",
+  category: "Slack",
+  label: "Wait for Slack Reply",
+  description:
+    "Pauses until someone replies in a Slack thread, then routes to `reply` with { text, user, ts }; `timeout` if none. " +
+    "Pass an upstream slack.post's `{{ node.channel }}` and `{{ node.ts }}`. Needs the same `connectionId` (for the " +
+    "workspace) and the Slack Events API pointed at /slack/events. Durable; requires qstash mode (auto-resolves in local).",
+  inputSchema: z.object({
+    channel: z.string().min(1), // channel id — use {{ post.channel }}
+    threadTs: z.string().min(1), // parent message ts — use {{ post.ts }}
+    connectionId: z.string().min(1), // Slack connection → workspace (team) id for the event key
+    timeoutSec: z.number().int().positive().max(2_592_000).default(86_400),
+  }),
+  outputs: ["reply", "timeout"],
+  durable: true,
+  execute: async ({ inputs, params, rt }) => {
+    if (!rt.connections) throw new Error("slack.waitForReply: connections are unavailable in this runtime");
+    const conn = await rt.connections.get(String(params.connectionId ?? inputs.connectionId), rt.ownerId);
+    const eventId = slackReplyEventId(conn.accountId, String(inputs.channel), String(inputs.threadTs));
+    const timeoutSec = (inputs.timeoutSec as number | undefined) ?? 86_400;
+
+    // Local mode has no inbound events → auto-resolve so the flow can be tested.
+    const wait = rt.waitForEvent ?? (async () => ({ timedOut: false, data: { auto: true } }));
+    const res = await wait(eventId, timeoutSec);
+    if (res.timedOut) return { data: { eventId, timedOut: true }, port: "timeout" };
+    return { data: { eventId, reply: res.data ?? null }, port: "reply" };
+  },
+});
+
+export const actionNodes = [emailSend, smtpSend, slackPost, slackWaitForReply, httpRequest];

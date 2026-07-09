@@ -406,6 +406,11 @@ Inbound webhook. The JSON body becomes the run's `trigger`. `data: { runId }`.
 #### `POST /triggers/tick/:workflowId` → `202`  *(internal; `x-internal-secret`)*
 Schedule tick — used by the scheduler; you normally don't call this directly.
 
+#### `POST /slack/events`  *(public; Slack-signed)*
+Slack Events API ingress. Slack calls this; you don't. Answers the setup
+handshake and resumes runs waiting on `slack.waitForReply`. Register it as the
+app's Event Subscription URL and set `SLACK_SIGNING_SECRET`.
+
 #### `GET /health` / `GET /` — liveness / service banner (public).
 
 ---
@@ -469,6 +474,12 @@ its **params**. Params marked *(expr)* commonly hold `{{ expressions }}`.
   | `credentialId` | string | an incoming-webhook credential (no `ts`, no threading) |
 - **Output:** `{ ok, ts?, channel?, dryRun }`. `ts` is the message id (= thread id) — only returned via a `connectionId`. To reply into the same thread later, pass `{{ <thisNodeId>.ts }}` as another `slack.post`'s `threadTs`.
 - Provide `text`, `blocks`, or both.
+
+**`slack.waitForReply`** — Pause until someone replies in a thread (durable).
+- **Outputs:** `reply`, `timeout` · **Auth:** `connectionId` (same Slack connection)
+- **Params:** `channel` (channel id — use `{{ post.channel }}`), `threadTs` (parent ts — use `{{ post.ts }}`), `connectionId` (req), `timeoutSec` (int, default 86400).
+- On a reply → `reply` port with `{ eventId, reply: { text, user, ts, channel } }`; on timeout → `timeout`.
+- Requires the Slack **Events API** pointed at `POST /slack/events` (with `SLACK_SIGNING_SECRET`) and `DISPATCH_MODE=qstash` to truly suspend (auto-resolves in local mode).
 
 ### 8.5 AI (`app: ai`) — all via OpenRouter
 
@@ -700,6 +711,33 @@ a `requireApproval` tool — a denial with `data` feeds your feedback back to th
 2. `POST /subscriptions { eventType: "user.signed_up", workflowId }`.
 3. Activate. Then `POST /events { type: "user.signed_up", payload: { email: "a@b.com" } }`
    starts a run whose `trigger` is that payload — reference it as `{{ trigger.email }}`.
+
+### 9.6 Recipe: Post to Slack, wait for a reply in the thread, continue
+
+> "Post a question to Slack; when someone replies in that thread, act on their answer."
+
+```jsonc
+{
+  "name": "slack-ask-and-wait",
+  "trigger": { "type": "manual" },
+  "nodes": [
+    { "id": "start", "type": "trigger.manual", "params": {} },
+    { "id": "ask",   "type": "slack.post",
+      "params": { "channel": "#ops", "text": "Deploy now? reply yes/no", "connectionId": "<slack-connection-id>" } },
+    { "id": "wait",  "type": "slack.waitForReply",
+      "params": { "channel": "{{ ask.channel }}", "threadTs": "{{ ask.ts }}", "connectionId": "<slack-connection-id>", "timeoutSec": 3600 } },
+    { "id": "ack",   "type": "slack.post",
+      "params": { "channel": "{{ ask.channel }}", "threadTs": "{{ ask.ts }}", "text": "Got it: {{ wait.reply.text }}", "connectionId": "<slack-connection-id>" } }
+  ],
+  "edges": [
+    { "from": { "nodeId": "start", "port": "out" },     "to": { "nodeId": "ask",  "port": "in" } },
+    { "from": { "nodeId": "ask",   "port": "success" }, "to": { "nodeId": "wait", "port": "in" } },
+    { "from": { "nodeId": "wait",  "port": "reply" },   "to": { "nodeId": "ack",  "port": "in" } }
+  ]
+}
+```
+
+`ask` returns `ts` + `channel` (Web API); `wait` suspends on that thread and resumes when someone replies, exposing `{{ wait.reply.text }}`. Needs the Slack Events API → `/slack/events` and `DISPATCH_MODE=qstash`.
 
 ---
 
