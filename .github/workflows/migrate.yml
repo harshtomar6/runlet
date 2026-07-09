@@ -1,0 +1,43 @@
+name: Migrate
+
+# Applies pending Drizzle migrations to the production database. Runs on pushes
+# to main that touch the schema/migrations (drizzle-kit migrate is idempotent —
+# already-applied migrations are skipped), and can be triggered manually.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "drizzle/**"
+      - "drizzle.config.ts"
+      - "src/storage/postgres/schema.ts"
+  workflow_dispatch: {}
+
+# Never run two migration jobs at once (they'd race on the migration lock).
+concurrency:
+  group: migrate-production
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Verify DATABASE_URL is configured
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::DATABASE_URL secret is not set. Add the production Neon connection string as a repo/environment secret."
+            exit 1
+          fi
+      - name: Apply migrations
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: pnpm db:migrate
