@@ -20,7 +20,8 @@ concurrency:
 jobs:
   migrate:
     runs-on: ubuntu-latest
-    environment: production
+    # Must match the environment where the secret lives so its secrets resolve.
+    environment: Production
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -30,14 +31,15 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Verify DATABASE_URL is configured
+        # Accept either secret name (DATABASE_URL preferred; DATABASE_SECRET fallback).
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.DATABASE_SECRET }}
         run: |
           if [ -z "$DATABASE_URL" ]; then
-            echo "::error::DATABASE_URL secret is not set. Add the production Neon connection string as a repo/environment secret."
+            echo "::error::No DB connection string. Set secret DATABASE_URL (or DATABASE_SECRET) on the Production environment = your Neon URL."
             exit 1
           fi
       - name: Apply migrations
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.DATABASE_SECRET }}
         run: pnpm db:migrate
