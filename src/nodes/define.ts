@@ -1,6 +1,6 @@
 import type { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
-import type { ConversationStore, CredentialStore, KVState } from "../ports";
+import type { ConnectionStore, ConversationStore, CredentialStore, KVState } from "../ports";
 import type { Connectors } from "../connectors";
 
 export type NodeKind = "trigger" | "action" | "wait" | "control";
@@ -9,6 +9,9 @@ export type NodeKind = "trigger" | "action" | "wait" | "control";
 export interface NodeRuntime {
   kv: KVState;
   credentials: CredentialStore;
+  /** OAuth connections (bot tokens, …). Owner-scoped reads. Present in real runs;
+   *  optional so lightweight test runtimes need not provide it. */
+  connections?: ConnectionStore;
   connectors: Connectors;
   conversations: ConversationStore;
   ownerId: string;

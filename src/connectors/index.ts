@@ -14,11 +14,22 @@ export interface EmailConnector {
 
 export interface SlackInput {
   channel: string;
-  text: string;
+  text?: string;
+  blocks?: unknown[]; // Block Kit
+  threadTs?: string; // reply into a thread
+  botToken?: string; // Web API (chat.postMessage) — from an OAuth connection; preferred
+  webhookUrl?: string; // incoming-webhook fallback (no ts/threading)
+}
+
+export interface SlackResult {
+  ok: boolean;
+  ts?: string; // message timestamp = thread id (Web API only)
+  channel?: string; // channel id (Web API only)
+  dryRun: boolean;
 }
 
 export interface SlackConnector {
-  post(creds: DecryptedSecret | null, input: SlackInput): Promise<{ ok: boolean; dryRun: boolean }>;
+  post(input: SlackInput): Promise<SlackResult>;
 }
 
 export interface HttpInput {

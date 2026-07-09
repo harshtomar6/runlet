@@ -1,21 +1,51 @@
 import { randomUUID } from "node:crypto";
-import type { Connectors, HttpConnector, HttpInput, SlackConnector, SlackInput } from "./index";
+import type { Connectors, HttpConnector, HttpInput, SlackConnector, SlackInput, SlackResult } from "./index";
 import { OpenRouterAiConnector } from "./ai";
 import { ResendEmailConnector } from "./email";
 import { NodemailerSmtpConnector } from "./smtp";
 import { safeFetch } from "./ssrf";
-import type { DecryptedSecret } from "../domain/types";
 
-class WebhookSlackConnector implements SlackConnector {
-  async post(creds: DecryptedSecret | null, input: SlackInput): Promise<{ ok: boolean; dryRun: boolean }> {
-    const webhook = creds?.secret?.webhookUrl as string | undefined;
-    if (!webhook) return { ok: true, dryRun: true };
-    const res = await fetch(webhook, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ channel: input.channel, text: input.text }),
-    });
-    return { ok: res.ok, dryRun: false };
+const SLACK_POST_MESSAGE_URL = "https://slack.com/api/chat.postMessage";
+
+/**
+ * Posts to Slack via the Web API (`chat.postMessage`) when a bot token is
+ * supplied — supports Block Kit, threading, and returns the message `ts`
+ * (thread id). Falls back to an incoming webhook (no ts/threading). No auth →
+ * dry-run.
+ */
+class DefaultSlackConnector implements SlackConnector {
+  async post(input: SlackInput): Promise<SlackResult> {
+    if (input.botToken) {
+      const res = await fetch(SLACK_POST_MESSAGE_URL, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${input.botToken}`,
+          "content-type": "application/json; charset=utf-8",
+        },
+        body: JSON.stringify({
+          channel: input.channel,
+          ...(input.text !== undefined ? { text: input.text } : {}),
+          ...(input.blocks ? { blocks: input.blocks } : {}),
+          ...(input.threadTs ? { thread_ts: input.threadTs } : {}),
+        }),
+      });
+      const json = (await res.json()) as { ok?: boolean; ts?: string; channel?: string; error?: string };
+      if (!json.ok) throw new Error(`Slack chat.postMessage failed: ${json.error ?? "unknown_error"}`);
+      return { ok: true, ts: json.ts, channel: json.channel, dryRun: false };
+    }
+    if (input.webhookUrl) {
+      const res = await fetch(input.webhookUrl, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          ...(input.channel ? { channel: input.channel } : {}),
+          ...(input.text !== undefined ? { text: input.text } : {}),
+          ...(input.blocks ? { blocks: input.blocks } : {}),
+        }),
+      });
+      return { ok: res.ok, dryRun: false };
+    }
+    return { ok: true, dryRun: true };
   }
 }
 
@@ -41,7 +71,7 @@ class FetchHttpConnector implements HttpConnector {
 export function defaultConnectors(): Connectors {
   return {
     email: new ResendEmailConnector(),
-    slack: new WebhookSlackConnector(),
+    slack: new DefaultSlackConnector(),
     http: new FetchHttpConnector(),
     smtp: new NodemailerSmtpConnector(),
     ai: new OpenRouterAiConnector(),

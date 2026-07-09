@@ -46,6 +46,7 @@ export const engineRoute = serve<EnginePayload>(
       rt: {
         kv: store.kv,
         credentials: store.credentials,
+        connections: store.connections,
         connectors: defaultConnectors(),
         conversations: store.conversations,
         ownerId: context.requestPayload.ownerId,
