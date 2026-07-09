@@ -1,4 +1,6 @@
 import { Hono } from "hono";
+import { cors } from "hono/cors";
+import { env } from "../config/env";
 import { engineRoute } from "../engine/upstash";
 import { onError } from "./middleware/error";
 import { requestId } from "./middleware/request-id";
@@ -27,6 +29,22 @@ export function createApp(): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
 
   app.use("*", requestId);
+
+  // CORS for browser clients. Auth is a bearer token (not cookies), so "*" is
+  // safe by default; restrict via CORS_ORIGINS. Handles OPTIONS preflight.
+  const origins = env.CORS_ORIGINS
+    ? env.CORS_ORIGINS.split(",").map((s) => s.trim()).filter(Boolean)
+    : "*";
+  app.use(
+    "*",
+    cors({
+      origin: origins,
+      allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+      allowHeaders: ["Content-Type", "Authorization", "x-api-key", "x-signature"],
+      maxAge: 86400,
+    }),
+  );
+
   app.onError(onError);
 
   app.get("/", (c) => c.json({ name: "runlet", version: "0.1.0", llms: "/llms.txt" }));

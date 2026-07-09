@@ -85,6 +85,11 @@ const EnvSchema = z.object({
   // skip API-key verification. NEVER set in production.
   AUTH_DEV_OWNER: z.string().optional(),
 
+  // CORS: comma-separated allowed origins for browser clients. Unset => "*"
+  // (safe here — auth is a bearer token, not cookies, so no CSRF surface).
+  // Set to e.g. "https://app.example.com,https://admin.example.com" to restrict.
+  CORS_ORIGINS: z.string().optional(),
+
   // Observability (all optional; absent => console-only / no alerts).
   AXIOM_TOKEN: z.string().optional(),
   AXIOM_DATASET: z.string().optional(),
