@@ -7,8 +7,14 @@ import { db } from "./client";
 import { credentials } from "./schema";
 
 export class PostgresCredentialStore implements CredentialStore {
-  async get(id: string): Promise<DecryptedSecret> {
-    const [row] = await db().select().from(credentials).where(eq(credentials.id, id)).limit(1);
+  async get(id: string, ownerId: string): Promise<DecryptedSecret> {
+    // Owner-scoped: a workflow can only decrypt credentials owned by the run's
+    // owner, even if another tenant's credentialId is referenced in node params.
+    const [row] = await db()
+      .select()
+      .from(credentials)
+      .where(and(eq(credentials.id, id), eq(credentials.ownerId, ownerId)))
+      .limit(1);
     if (!row) throw new NotFoundError("Credential", id);
     const secret = decryptJson<Record<string, unknown>>(row.ciphertext);
     return { id: row.id, type: row.type, secret };
