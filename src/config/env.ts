@@ -66,6 +66,16 @@ const EnvSchema = z.object({
 
   // Public base URL of this service (for QStash schedule destinations).
   PUBLIC_BASE_URL: z.string().url().optional(),
+
+  // OAuth (account connections). One Runlet-owned app per provider; owners connect
+  // their own account. Base for the callback redirect URI (defaults to PUBLIC_BASE_URL);
+  // OAUTH_SUCCESS_REDIRECT is where the browser lands after a successful connect.
+  OAUTH_REDIRECT_BASE_URL: z.string().url().optional(),
+  OAUTH_SUCCESS_REDIRECT: z.string().url().optional(),
+  // Slack app (Web API / OAuth v2). Space/comma-separated bot scopes.
+  SLACK_CLIENT_ID: z.string().optional(),
+  SLACK_CLIENT_SECRET: z.string().optional(),
+  SLACK_SCOPES: z.string().default("chat:write,chat:write.public"),
   // Shared secret protecting internal trigger endpoints (schedule ticks).
   INTERNAL_SECRET: z.string().optional(),
   // Optional HMAC secret; when set, /hooks/:id requires a valid x-signature.

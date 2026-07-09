@@ -7,7 +7,9 @@ import { health } from "./routes/health";
 import { hooks } from "./routes/hooks";
 import { apiKeys } from "./routes/api-keys";
 import { approvals } from "./routes/approvals";
+import { connections } from "./routes/connections";
 import { credentials } from "./routes/credentials";
+import { oauth } from "./routes/oauth";
 import { internalTriggers } from "./routes/internal-triggers";
 import { llms } from "./routes/llms";
 import { metrics } from "./routes/metrics";
@@ -37,6 +39,8 @@ export function createApp(): Hono<AppEnv> {
   app.route("/runs", runs); // authed run observability
   app.route("/metrics", metrics); // authed aggregate metrics
   app.route("/credentials", credentials); // authed encrypted secrets
+  app.route("/connections", connections); // authed OAuth connections
+  app.route("/oauth", oauth); // OAuth flow (start authed; callback public)
   app.route("/api-keys", apiKeys); // authed API-key management
   app.route("/approvals", approvals); // authed human-approval delivery
   app.route("/hooks", hooks); // public webhook entrypoint (optional HMAC)

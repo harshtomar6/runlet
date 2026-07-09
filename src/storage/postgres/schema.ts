@@ -126,6 +126,34 @@ export const apiKeys = pgTable(
   }),
 );
 
+export const connections = pgTable(
+  "connections",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id").notNull(),
+    provider: text("provider").notNull(),
+    accountId: text("account_id").notNull(),
+    label: text("label").notNull().default(""),
+    scopes: jsonb("scopes").$type<string[]>().notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    // encrypted { accessToken, refreshToken, raw } — same AES-GCM as credentials
+    ciphertext: bytea("ciphertext").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    byOwner: index("connections_owner_idx").on(t.ownerId),
+    // one connection per (owner, provider, account); reconnect upserts.
+    byOwnerProviderAccount: uniqueIndex("connections_owner_provider_account_idx").on(
+      t.ownerId,
+      t.provider,
+      t.accountId,
+    ),
+    // inbound event routing (provider account → connections) lands with the events slice.
+    byProviderAccount: index("connections_provider_account_idx").on(t.provider, t.accountId),
+  }),
+);
+
 export const eventSubscriptions = pgTable(
   "event_subscriptions",
   {

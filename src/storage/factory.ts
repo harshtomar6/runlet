@@ -10,6 +10,7 @@ import type {
 import { MemoryStore } from "./memory/store";
 import { RedisConversationStore } from "./redis/conversation-store";
 import { PostgresApiKeyRepo } from "./postgres/api-key-repo";
+import { PostgresConnectionStore } from "./postgres/connection-store";
 import { PostgresCredentialStore } from "./postgres/credential-store";
 import { PostgresEventLog } from "./postgres/event-log";
 import { PostgresSubscriptionRepo } from "./postgres/subscription-repo";
@@ -76,6 +77,7 @@ export const store: Store =
         workflows: mkWorkflowRepo(env.WORKFLOW_STORE),
         events: mkEventLog(env.EVENT_STORE),
         credentials: mkCredentialStore(env.CRED_STORE),
+        connections: new PostgresConnectionStore(),
         subscriptions: mkSubscriptionRepo(env.WORKFLOW_STORE),
         apiKeys: mkApiKeyRepo(env.WORKFLOW_STORE),
         conversations: new RedisConversationStore(), // hot memory in Redis

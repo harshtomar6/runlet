@@ -138,3 +138,35 @@ export interface ConversationMessage {
   role: "system" | "user" | "assistant";
   content: string;
 }
+
+/**
+ * An OAuth-established link to an external account (Slack workspace, Google
+ * account, …). Tokens are stored encrypted; the other fields stay queryable
+ * (e.g. `accountId` routes inbound events to the right owner). Owner-scoped.
+ */
+export interface Connection {
+  id: string;
+  ownerId: string;
+  provider: string; // "slack" | "google" | ...
+  accountId: string; // team_id / email — provider account identity + inbound routing key
+  label: string; // human name (workspace / email) for display
+  scopes: string[];
+  accessToken: string;
+  refreshToken: string | null;
+  expiresAt: Date | null; // null = non-expiring (e.g. Slack bot token)
+  raw: Record<string, unknown>; // provider extras (bot_user_id, incoming_webhook, …)
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/** Connection without secrets — safe to return from the API. */
+export interface ConnectionMeta {
+  id: string;
+  ownerId: string;
+  provider: string;
+  accountId: string;
+  label: string;
+  scopes: string[];
+  expiresAt: Date | null;
+  createdAt: Date;
+}
