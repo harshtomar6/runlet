@@ -113,3 +113,30 @@ test("resolved inputs are validated before execute; missing required input fails
   assert.ok(!sink.events.some((e) => e.type === "run.succeeded"));
   assert.equal(sink.events.filter((e) => e.type === "run.started").length, 1);
 });
+
+test("an expression that fails to resolve records node.failed (not silent)", async () => {
+  const sink = new MemoryEventSink();
+  const exec = new LocalExecutionContext("t");
+  const def: WorkflowVersion = {
+    ...base,
+    nodes: [
+      { id: "t", type: "trigger.manual", params: {} },
+      // `{{ foo.. }}` throws during resolution (used to escape the step → no event).
+      { id: "e1", type: "email.send", params: { to: "{{ foo.. }}", templateId: "d1" } },
+    ],
+    edges: [{ from: { nodeId: "t", port: "out" }, to: { nodeId: "e1", port: "in" } }],
+  };
+
+  await assert.rejects(() =>
+    runWorkflow(exec, {
+      runId: "t",
+      def,
+      trigger: {},
+      sink,
+      rt: { kv: new MemoryKVState(), credentials: nullCredentials, connectors: dryRunConnectors(), conversations: new MemoryConversationStore(), ownerId: "test" },
+    }),
+  );
+
+  const failed = sink.events.find((e) => e.type === "node.failed" && e.nodeId === "e1");
+  assert.ok(failed, "resolution error should record node.failed for e1");
+});
