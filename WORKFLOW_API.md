@@ -785,6 +785,7 @@ Error codes and how to fix them:
 | `invalid_output_port` | `from.port` isn't a real output of that node | Use a listed output port (§8). |
 | `orphan_node` | Node unreachable from the trigger | Wire an edge into it. |
 | `cycle` | A structural back-edge | Use `control.loop` for repetition, not a back-edge. |
+| `invalid_expression` | A `{{ ... }}` expression has a **syntax** error (won't compile) | Fix the JSONata syntax. Note: data-dependent errors (missing path, wrong type) can't be caught here — only at runtime. |
 
 **Notes for building correctly:**
 

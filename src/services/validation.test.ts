@@ -30,3 +30,17 @@ test("flags unknown type, missing param, orphan, bad port, trigger mismatch", ()
   assert.ok(codes.includes("invalid_output_port"));
   assert.ok(codes.includes("orphan_node"));
 });
+
+test("flags a malformed {{ expression }} (syntax), but allows valid ones", () => {
+  const nodes: Node[] = [
+    { id: "t", type: "trigger.event", params: { eventType: "app.installed" } },
+    // valid expression in `to`, broken one in the `vars` object
+    { id: "e", type: "email.send", params: { to: "{{ trigger.email }}", templateId: "x", vars: { n: "{{ foo.. }}" } } },
+  ];
+  const edges: Edge[] = [{ from: { nodeId: "t", port: "out" }, to: { nodeId: "e", port: "in" } }];
+  const res = validateGraph({ trigger, nodes, edges });
+  const exprErrors = res.errors.filter((e) => e.code === "invalid_expression");
+  assert.equal(exprErrors.length, 1);
+  assert.equal(exprErrors[0]!.nodeId, "e");
+  assert.match(exprErrors[0]!.message, /foo\.\./);
+});
