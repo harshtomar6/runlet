@@ -76,14 +76,30 @@ export async function runWorkflow(exec: ExecutionContext, p: RunParams): Promise
       if (!def2) throw new Error(`Unknown node type at runtime: ${node.type}`);
 
       if (def2.kind === "wait") {
-        const seconds = parseDuration(String(await resolveValue(node.params.duration, scope(locals))));
+        let seconds: number;
+        try {
+          seconds = parseDuration(String(await resolveValue(node.params.duration, scope(locals))));
+        } catch (err) {
+          await exec.run(`${prefix}node:${id}:failed`, () =>
+            sink.append(evt(p.runId, "node.failed", { nodeId: id, error: serializeError(err) })),
+          );
+          throw err;
+        }
         await exec.sleep(`${prefix}sleep:${id}`, seconds);
         frontier.push(...successors(def.edges, id, "out"));
         continue;
       }
 
       if (node.type === "control.loop") {
-        const times = Math.min(Number(await resolveValue(node.params.times, scope(locals))) || 0, MAX_LOOP);
+        let times: number;
+        try {
+          times = Math.min(Number(await resolveValue(node.params.times, scope(locals))) || 0, MAX_LOOP);
+        } catch (err) {
+          await exec.run(`${prefix}node:${id}:failed`, () =>
+            sink.append(evt(p.runId, "node.failed", { nodeId: id, error: serializeError(err) })),
+          );
+          throw err;
+        }
         const body = successors(def.edges, id, "each");
         for (let i = 0; i < times; i++) {
           // Bind the iteration index so body nodes can resolve distinct inputs
@@ -96,13 +112,13 @@ export async function runWorkflow(exec: ExecutionContext, p: RunParams): Promise
 
       if (!def2.execute) throw new Error(`Node type "${node.type}" has no runtime implementation`);
 
-      const inputs = await resolveInputs(node.params, scope(locals));
       const schema = def2.inputSchema;
       const executeFn = def2.execute;
       const baseStepId = `${prefix}node:${id}`;
+      const sc = scope(locals);
       const outcome = def2.durable
-        ? await runDurableNode(baseStepId, inputs, executeFn, schema, id, node)
-        : await runStepNode(baseStepId, inputs, executeFn, schema, id, node);
+        ? await runDurableNode(baseStepId, sc, executeFn, schema, id, node)
+        : await runStepNode(baseStepId, sc, executeFn, schema, id, node);
 
       outputs[id] = outcome.data ?? null;
       const port = outcome.port ?? def2.outputs[0] ?? "out";
@@ -113,7 +129,7 @@ export async function runWorkflow(exec: ExecutionContext, p: RunParams): Promise
   // Normal node: the whole execution is ONE durable step.
   async function runStepNode(
     baseStepId: string,
-    inputs: Record<string, unknown>,
+    sc: Record<string, unknown>,
     executeFn: NonNullable<NodeDefinition["execute"]>,
     schema: NodeDefinition["inputSchema"],
     id: string,
@@ -121,8 +137,11 @@ export async function runWorkflow(exec: ExecutionContext, p: RunParams): Promise
   ): Promise<NodeOutcome> {
     const rt: NodeRuntime = { ...p.rt, runId: p.runId, workflowRunId: exec.workflowRunId, stepId: baseStepId };
     return exec.run(baseStepId, async () => {
-      await sink.append(evt(p.runId, "node.started", { nodeId: id, input: inputs }));
+      await sink.append(evt(p.runId, "node.started", { nodeId: id, input: node.params }));
       try {
+        // Resolve expressions INSIDE the step so a resolution error is recorded
+        // as node.failed (not thrown silently outside any step).
+        const inputs = await resolveInputs(node.params, sc);
         const parsed = schema.safeParse(inputs);
         if (!parsed.success) throw new Error(`Invalid inputs for node "${id}" (${node.type}): ${parsed.error.message}`);
         const result = await executeFn({ inputs: parsed.data as Record<string, unknown>, params: node.params, rt });
@@ -140,7 +159,7 @@ export async function runWorkflow(exec: ExecutionContext, p: RunParams): Promise
   // written in their own step so they don't duplicate on replay.
   async function runDurableNode(
     baseStepId: string,
-    inputs: Record<string, unknown>,
+    sc: Record<string, unknown>,
     executeFn: NonNullable<NodeDefinition["execute"]>,
     schema: NodeDefinition["inputSchema"],
     id: string,
@@ -157,9 +176,10 @@ export async function runWorkflow(exec: ExecutionContext, p: RunParams): Promise
       waitForEvent: (eventId, timeoutSec) => exec.waitForEvent(`wait:${eventId}`, eventId, timeoutSec),
     };
     await exec.run(`${baseStepId}:started`, () =>
-      sink.append(evt(p.runId, "node.started", { nodeId: id, input: inputs })),
+      sink.append(evt(p.runId, "node.started", { nodeId: id, input: node.params })),
     );
     try {
+      const inputs = await resolveInputs(node.params, sc);
       const parsed = schema.safeParse(inputs);
       if (!parsed.success) throw new Error(`Invalid inputs for node "${id}" (${node.type}): ${parsed.error.message}`);
       const result = await executeFn({ inputs: parsed.data as Record<string, unknown>, params: node.params, rt });
