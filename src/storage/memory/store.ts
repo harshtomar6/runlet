@@ -142,9 +142,9 @@ export class MemoryStore implements Store {
     };
 
     this.credentials = {
-      async get(id): Promise<DecryptedSecret> {
+      async get(id, ownerId): Promise<DecryptedSecret> {
         const c = self.creds.get(id);
-        if (!c) throw new NotFoundError("Credential", id);
+        if (!c || c.meta.ownerId !== ownerId) throw new NotFoundError("Credential", id);
         return { id, type: c.meta.type, secret: c.secret };
       },
       async put(input: PutCredentialInput) {

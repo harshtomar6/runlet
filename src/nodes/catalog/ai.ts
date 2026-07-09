@@ -55,7 +55,7 @@ export const aiComplete = defineNode({
       throw new Error("ai.complete requires `prompt` or `messages`");
     }
 
-    const creds = params.credentialId ? await rt.credentials.get(String(params.credentialId)) : null;
+    const creds = params.credentialId ? await rt.credentials.get(String(params.credentialId), rt.ownerId) : null;
     const res = await rt.connectors.ai.complete(creds, {
       model: String(inputs.model),
       messages,
@@ -93,7 +93,7 @@ export const aiImage = defineNode({
   outputs: ["success", "error"],
   credentials: ["openrouter"],
   execute: async ({ inputs, params, rt }) => {
-    const creds = params.credentialId ? await rt.credentials.get(String(params.credentialId)) : null;
+    const creds = params.credentialId ? await rt.credentials.get(String(params.credentialId), rt.ownerId) : null;
     const res = await rt.connectors.ai.image(creds, {
       model: String(inputs.model),
       prompt: String(inputs.prompt),
@@ -120,7 +120,7 @@ export const aiTranscribe = defineNode({
   outputs: ["success", "error"],
   credentials: ["openrouter"],
   execute: async ({ inputs, params, rt }) => {
-    const creds = params.credentialId ? await rt.credentials.get(String(params.credentialId)) : null;
+    const creds = params.credentialId ? await rt.credentials.get(String(params.credentialId), rt.ownerId) : null;
     const res = await rt.connectors.ai.transcribe(creds, {
       model: String(inputs.model),
       audio: String(inputs.audio),
@@ -149,7 +149,7 @@ export const aiTts = defineNode({
   outputs: ["success", "error"],
   credentials: ["openrouter"],
   execute: async ({ inputs, params, rt }) => {
-    const creds = params.credentialId ? await rt.credentials.get(String(params.credentialId)) : null;
+    const creds = params.credentialId ? await rt.credentials.get(String(params.credentialId), rt.ownerId) : null;
     const res = await rt.connectors.ai.tts(creds, {
       model: String(inputs.model),
       text: String(inputs.text),
@@ -218,7 +218,7 @@ export const aiAgent = defineNode({
       });
     }
 
-    const creds = params.credentialId ? await rt.credentials.get(String(params.credentialId)) : null;
+    const creds = params.credentialId ? await rt.credentials.get(String(params.credentialId), rt.ownerId) : null;
     const messages: Array<Record<string, unknown>> = [
       ...(inputs.system ? [{ role: "system", content: String(inputs.system) }] : []),
       { role: "user", content: String(inputs.prompt) },

@@ -87,7 +87,7 @@ export interface PutCredentialInput {
 }
 
 export interface CredentialStore {
-  get(id: string): Promise<DecryptedSecret>; // decrypts internally
+  get(id: string, ownerId: string): Promise<DecryptedSecret>; // decrypts internally; owner-scoped (tenant isolation)
   put(input: PutCredentialInput): Promise<void>; // encrypts internally
   list(ownerId: string): Promise<CredentialMeta[]>; // metadata only
   delete(id: string, ownerId: string): Promise<boolean>; // owner-scoped; true if a row was removed

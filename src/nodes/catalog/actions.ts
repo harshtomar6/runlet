@@ -24,7 +24,7 @@ export const emailSend = defineNode({
     if (!(await rt.kv.setNX(idem, "1", 86_400))) {
       return { data: { skipped: true }, port: "success" };
     }
-    const creds = params.credentialId ? await rt.credentials.get(String(params.credentialId)) : null;
+    const creds = params.credentialId ? await rt.credentials.get(String(params.credentialId), rt.ownerId) : null;
     const res = await rt.connectors.email.send(creds, {
       to,
       templateId,
@@ -48,7 +48,7 @@ export const slackPost = defineNode({
   outputs: ["success", "error"],
   credentials: ["slack"],
   execute: async ({ inputs, params, rt }) => {
-    const creds = params.credentialId ? await rt.credentials.get(String(params.credentialId)) : null;
+    const creds = params.credentialId ? await rt.credentials.get(String(params.credentialId), rt.ownerId) : null;
     const res = await rt.connectors.slack.post(creds, {
       channel: String(inputs.channel),
       text: String(inputs.text),
@@ -103,7 +103,7 @@ export const smtpSend = defineNode({
     if (!(await rt.kv.setNX(idem, "1", 86_400))) {
       return { data: { skipped: true }, port: "success" };
     }
-    const creds = params.credentialId ? await rt.credentials.get(String(params.credentialId)) : null;
+    const creds = params.credentialId ? await rt.credentials.get(String(params.credentialId), rt.ownerId) : null;
     const res = await rt.connectors.smtp.send(creds, {
       to,
       subject: String(inputs.subject),
