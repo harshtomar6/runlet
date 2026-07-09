@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { Edge, Node, TriggerConfig } from "../domain/types";
+import { expressionSyntaxErrors } from "../engine/expr";
 import { getNode } from "../nodes";
 
 export interface ValidationIssue {
@@ -74,6 +75,16 @@ export function validateGraph(input: GraphInput): ValidationResult {
           nodeId: n.id,
         });
       }
+    }
+
+    // Expression SYNTAX (compile) errors — caught statically before a run.
+    // (Data-dependent runtime errors can't be checked here — there's no run.)
+    for (const { expr, message } of expressionSyntaxErrors(n.params ?? {})) {
+      errors.push({
+        code: "invalid_expression",
+        message: `Node "${n.id}" (${n.type}) has an invalid expression "{{ ${expr} }}": ${message}`,
+        nodeId: n.id,
+      });
     }
   }
 

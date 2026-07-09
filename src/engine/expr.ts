@@ -29,6 +29,40 @@ export class ExpressionError extends Error {
   }
 }
 
+/** The raw `{{ ... }}` expressions inside a string (full or embedded). */
+function extractExpressions(s: string): string[] {
+  const full = s.match(FULL);
+  if (full) return [(full[1] ?? "").trim()];
+  return [...s.matchAll(PART)].map((m) => (m[1] ?? "").trim());
+}
+
+/**
+ * Statically compile every `{{ expression }}` in a value and report SYNTAX
+ * errors. No scope/data needed — catches typos (e.g. `foo..`, unbalanced
+ * parens) before a run. Does NOT catch data-dependent runtime errors.
+ */
+export function expressionSyntaxErrors(value: unknown): Array<{ expr: string; message: string }> {
+  const errors: Array<{ expr: string; message: string }> = [];
+  const walk = (v: unknown): void => {
+    if (typeof v === "string") {
+      for (const expr of extractExpressions(v)) {
+        if (!expr) continue;
+        try {
+          jsonata(expr);
+        } catch (err) {
+          errors.push({ expr, message: err instanceof Error ? err.message : String(err) });
+        }
+      }
+    } else if (Array.isArray(v)) {
+      for (const item of v) walk(item);
+    } else if (v && typeof v === "object") {
+      for (const item of Object.values(v)) walk(item);
+    }
+  };
+  walk(value);
+  return errors;
+}
+
 export async function resolveValue(value: unknown, scope: Scope): Promise<unknown> {
   if (typeof value === "string") return resolveString(value, scope);
   if (Array.isArray(value)) return Promise.all(value.map((v) => resolveValue(v, scope)));
