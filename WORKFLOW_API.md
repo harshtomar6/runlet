@@ -456,10 +456,19 @@ its **params**. Params marked *(expr)* commonly hold `{{ expressions }}`.
 
 ### 8.4 Slack (`app: slack`)
 
-**`slack.post`** — Post a message to a Slack channel.
-- **Outputs:** `success`, `error` · **Credentials:** `slack`
-- **Params:** `channel` (string, req, e.g. `"#alerts"`), `text` (string, req, *expr*), `credentialId`.
-- Output `{ ok, dryRun }`.
+**`slack.post`** — Post a message to a Slack channel. Supports Block Kit and threading.
+- **Outputs:** `success`, `error` · **Auth:** an OAuth `connectionId` (preferred) or a webhook `credentialId`
+- **Params:**
+  | key | type | notes |
+  |---|---|---|
+  | `channel` | string *(expr)* | e.g. `"#alerts"` or a channel id |
+  | `text` | string *(expr)* | message text (fallback/notification text when using `blocks`) |
+  | `blocks` | array *(expr)* | Block Kit blocks for rich messages |
+  | `threadTs` | string *(expr)* | reply in a thread — pass an upstream post's `ts` |
+  | `connectionId` | string | an OAuth Slack connection (bot token → Web API). **Required for `ts`/threading.** |
+  | `credentialId` | string | an incoming-webhook credential (no `ts`, no threading) |
+- **Output:** `{ ok, ts?, channel?, dryRun }`. `ts` is the message id (= thread id) — only returned via a `connectionId`. To reply into the same thread later, pass `{{ <thisNodeId>.ts }}` as another `slack.post`'s `threadTs`.
+- Provide `text`, `blocks`, or both.
 
 ### 8.5 AI (`app: ai`) — all via OpenRouter
 
@@ -704,12 +713,20 @@ side effect, `dryRun: true` in output).
 | `type` | `secret` shape | Used by |
 |---|---|---|
 | `resend` | `{ "apiKey": "re_..." }` | `email.send` (fallback: `RESEND_API_KEY`) |
-| `slack` | `{ "webhookUrl": "https://hooks.slack.com/..." }` | `slack.post` |
+| `slack` | `{ "webhookUrl": "https://hooks.slack.com/..." }` | `slack.post` (webhook mode — no threading) |
 | `smtp` | `{ "host", "port", "user", "pass", "from", "secure?" }` | `email.smtp` |
 | `openrouter` | `{ "apiKey": "sk-or-..." }` | all `ai.*` (fallback: `OPENROUTER_API_KEY`) |
 
 `http.request` needs no credential — put any auth token directly in `headers`
 (e.g. `{ "Authorization": "Bearer ..." }`).
+
+### OAuth connections
+
+Some integrations use an **OAuth connection** instead of a pasted secret. The
+owner links their account via `POST /oauth/:provider/start` → consent →
+`GET /connections` lists them `{ id, provider, accountId, label, scopes }`. Set
+that `id` as a node's **`connectionId`** (e.g. `slack.post` in Web-API mode gets
+threading + `ts` this way). Connections are owner-scoped; tokens are never returned.
 
 ---
 

@@ -59,6 +59,7 @@ export class NodeTestService {
       rt: {
         kv: this.store.kv,
         credentials: this.store.credentials,
+        connections: this.store.connections,
         connectors: dryRun ? dryRunConnectors() : this.realConnectors,
         conversations: this.store.conversations,
         ownerId,

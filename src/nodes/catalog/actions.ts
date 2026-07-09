@@ -39,19 +39,38 @@ export const slackPost = defineNode({
   kind: "action",
   category: "Slack",
   label: "Post to Slack",
-  description: "Posts a message to a Slack channel.",
+  description:
+    "Posts a message to a Slack channel. Supports Block Kit (`blocks`) and threading (`threadTs`). " +
+    "Prefer `connectionId` (an OAuth Slack connection → Web API, returns `ts`); `credentialId` uses an " +
+    "incoming-webhook credential (no `ts`/threading).",
   inputSchema: z.object({
     channel: z.string().min(1),
-    text: z.string().min(1),
-    credentialId: z.string().optional(),
+    text: z.string().optional(),
+    blocks: z.array(z.unknown()).optional(), // Block Kit blocks
+    threadTs: z.string().optional(), // reply in a thread (use an upstream post's `ts`)
+    connectionId: z.string().optional(), // OAuth Slack connection (bot token) — preferred
+    credentialId: z.string().optional(), // incoming-webhook credential (fallback)
   }),
   outputs: ["success", "error"],
   credentials: ["slack"],
   execute: async ({ inputs, params, rt }) => {
-    const creds = params.credentialId ? await rt.credentials.get(String(params.credentialId), rt.ownerId) : null;
-    const res = await rt.connectors.slack.post(creds, {
+    let botToken: string | undefined;
+    let webhookUrl: string | undefined;
+    if (params.connectionId) {
+      if (!rt.connections) throw new Error("slack.post: connections are unavailable in this runtime");
+      const conn = await rt.connections.get(String(params.connectionId), rt.ownerId);
+      botToken = conn.accessToken;
+    } else if (params.credentialId) {
+      const creds = await rt.credentials.get(String(params.credentialId), rt.ownerId);
+      webhookUrl = creds.secret.webhookUrl as string | undefined;
+    }
+    const res = await rt.connectors.slack.post({
       channel: String(inputs.channel),
-      text: String(inputs.text),
+      text: inputs.text as string | undefined,
+      blocks: inputs.blocks as unknown[] | undefined,
+      threadTs: inputs.threadTs as string | undefined,
+      botToken,
+      webhookUrl,
     });
     return { data: res, port: "success" };
   },

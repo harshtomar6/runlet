@@ -53,6 +53,7 @@ export class LocalDispatcher implements Dispatcher {
         rt: {
           kv: this.store.kv,
           credentials: this.store.credentials,
+          connections: this.store.connections,
           connectors: defaultConnectors(),
           conversations: this.store.conversations,
           ownerId: input.ownerId,
