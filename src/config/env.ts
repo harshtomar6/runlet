@@ -76,6 +76,9 @@ const EnvSchema = z.object({
   SLACK_CLIENT_ID: z.string().optional(),
   SLACK_CLIENT_SECRET: z.string().optional(),
   SLACK_SCOPES: z.string().default("chat:write,chat:write.public"),
+  // Slack signing secret — verifies inbound POST /slack/events. Required in prod
+  // to accept events (fail-closed, like WEBHOOK_SECRET).
+  SLACK_SIGNING_SECRET: z.string().optional(),
   // Shared secret protecting internal trigger endpoints (schedule ticks).
   INTERNAL_SECRET: z.string().optional(),
   // Optional HMAC secret; when set, /hooks/:id requires a valid x-signature.

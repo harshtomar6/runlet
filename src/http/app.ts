@@ -17,6 +17,7 @@ import { llms } from "./routes/llms";
 import { metrics } from "./routes/metrics";
 import { nodeTypes } from "./routes/node-types";
 import { runs } from "./routes/runs";
+import { slackEvents } from "./routes/slack-events";
 import { subscriptions } from "./routes/subscriptions";
 import { workflows } from "./routes/workflows";
 import type { AppEnv } from "./types";
@@ -62,6 +63,7 @@ export function createApp(): Hono<AppEnv> {
   app.route("/api-keys", apiKeys); // authed API-key management
   app.route("/approvals", approvals); // authed human-approval delivery
   app.route("/hooks", hooks); // public webhook entrypoint (optional HMAC)
+  app.route("/slack/events", slackEvents); // public Slack Events API ingress (signature-verified)
   app.route("/triggers", internalTriggers); // internal schedule ticks (secret)
 
   // Durable engine endpoint (QStash-invoked). The Upstash Hono adapter expects

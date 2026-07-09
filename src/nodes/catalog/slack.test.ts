@@ -3,8 +3,9 @@ import { test } from "node:test";
 import type { Connectors, SlackInput } from "../../connectors";
 import { dryRunConnectors } from "../../connectors/default";
 import { MemoryStore } from "../../storage/memory/store";
+import { slackReplyEventId } from "../../services/slack-events";
 import type { NodeRuntime } from "../define";
-import { slackPost } from "./actions";
+import { slackPost, slackWaitForReply } from "./actions";
 
 function harness() {
   const store = new MemoryStore();
@@ -64,6 +65,47 @@ test("slack.post via a webhook credential uses webhookUrl (no bot token)", async
   assert.equal(calls[0]!.webhookUrl, "https://hooks.slack/x");
   assert.equal(calls[0]!.botToken, undefined);
   assert.equal(out.port, "success");
+});
+
+async function seedConn(store: MemoryStore, id = "conn1", ownerId = "owner-A", accountId = "T1") {
+  await store.connections.upsert({
+    id, ownerId, provider: "slack", accountId, label: "Acme", scopes: [],
+    accessToken: "xoxb", refreshToken: null, expiresAt: null,
+  });
+}
+
+test("slack.waitForReply → reply: team-scoped eventId matches the ingress, returns payload", async () => {
+  const { store, rt } = harness();
+  await seedConn(store);
+  let capturedEventId: string | undefined;
+  const rt2: NodeRuntime = {
+    ...rt,
+    waitForEvent: async (eventId) => {
+      capturedEventId = eventId;
+      return { timedOut: false, data: { text: "ship it", user: "U1", ts: "2.2" } };
+    },
+  };
+  const out = await slackWaitForReply.execute!({
+    inputs: { channel: "C1", threadTs: "1.1", timeoutSec: 60 },
+    params: { connectionId: "conn1" },
+    rt: rt2,
+  });
+  assert.equal(out.port, "reply");
+  // Same id the /slack/events ingress computes for team T1, channel C1, thread 1.1.
+  assert.equal(capturedEventId, slackReplyEventId("T1", "C1", "1.1"));
+  assert.equal((out.data as { reply: { text: string } }).reply.text, "ship it");
+});
+
+test("slack.waitForReply → timeout when no reply arrives", async () => {
+  const { store, rt } = harness();
+  await seedConn(store);
+  const rt2: NodeRuntime = { ...rt, waitForEvent: async () => ({ timedOut: true, data: null }) };
+  const out = await slackWaitForReply.execute!({
+    inputs: { channel: "C1", threadTs: "1.1" },
+    params: { connectionId: "conn1" },
+    rt: rt2,
+  });
+  assert.equal(out.port, "timeout");
 });
 
 test("slack.post cannot use another owner's connection (tenant isolation)", async () => {
