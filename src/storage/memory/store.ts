@@ -1,5 +1,6 @@
 import type {
   ApiKey,
+  Connection,
   CredentialMeta,
   DecryptedSecret,
   EventSubscription,
@@ -12,6 +13,7 @@ import type {
 import { NotFoundError } from "../../ports/errors";
 import type {
   ApiKeyRepo,
+  ConnectionStore,
   ConversationStore,
   CredentialStore,
   EventLog,
@@ -33,6 +35,7 @@ export class MemoryStore implements Store {
   readonly workflows: WorkflowRepo;
   readonly events: EventLog;
   readonly credentials: CredentialStore;
+  readonly connections: ConnectionStore;
   readonly subscriptions: SubscriptionRepo;
   readonly apiKeys: ApiKeyRepo;
 
@@ -41,6 +44,7 @@ export class MemoryStore implements Store {
   private readonly runs = new Map<string, Run>();
   private readonly runEvents: RunEvent[] = [];
   private readonly creds = new Map<string, { meta: CredentialMeta; secret: Record<string, unknown> }>();
+  private readonly conns = new Map<string, Connection>();
   private readonly subs = new Map<string, EventSubscription>();
   private readonly keys = new Map<string, ApiKey>();
 
@@ -161,6 +165,58 @@ export class MemoryStore implements Store {
         if (!c || c.meta.ownerId !== ownerId) return false;
         self.creds.delete(id);
         return true;
+      },
+    };
+
+    this.connections = {
+      async upsert(input) {
+        const now = new Date();
+        // Emulate the unique(ownerId, provider, accountId) upsert.
+        const existing = [...self.conns.values()].find(
+          (c) => c.ownerId === input.ownerId && c.provider === input.provider && c.accountId === input.accountId,
+        );
+        const conn: Connection = {
+          id: existing?.id ?? input.id,
+          ownerId: input.ownerId,
+          provider: input.provider,
+          accountId: input.accountId,
+          label: input.label,
+          scopes: input.scopes,
+          accessToken: input.accessToken,
+          refreshToken: input.refreshToken,
+          expiresAt: input.expiresAt,
+          raw: input.raw ?? {},
+          createdAt: existing?.createdAt ?? now,
+          updatedAt: now,
+        };
+        self.conns.set(conn.id, conn);
+        return conn;
+      },
+      async get(id, ownerId) {
+        const c = self.conns.get(id);
+        if (!c || c.ownerId !== ownerId) throw new NotFoundError("Connection", id);
+        return c;
+      },
+      async listByOwner(ownerId) {
+        return [...self.conns.values()]
+          .filter((c) => c.ownerId === ownerId)
+          .map(({ accessToken: _a, refreshToken: _r, raw: _raw, updatedAt: _u, ...meta }) => meta);
+      },
+      async delete(id, ownerId) {
+        const c = self.conns.get(id);
+        if (!c || c.ownerId !== ownerId) return null;
+        self.conns.delete(id);
+        return c;
+      },
+      async updateTokens(id, patch) {
+        const c = self.conns.get(id);
+        if (!c) throw new NotFoundError("Connection", id);
+        if (patch.accessToken !== undefined) c.accessToken = patch.accessToken;
+        if (patch.refreshToken !== undefined) c.refreshToken = patch.refreshToken;
+        if (patch.expiresAt !== undefined) c.expiresAt = patch.expiresAt;
+        if (patch.scopes) c.scopes = patch.scopes;
+        if (patch.raw) c.raw = patch.raw;
+        c.updatedAt = new Date();
       },
     };
 

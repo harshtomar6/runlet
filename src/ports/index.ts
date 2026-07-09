@@ -1,6 +1,8 @@
 import type {
   ApiKey,
   ApiKeyMeta,
+  Connection,
+  ConnectionMeta,
   ConversationMessage,
   CredentialMeta,
   DecryptedSecret,
@@ -116,6 +118,37 @@ export interface ApiKeyRepo {
   revoke(id: string, ownerId: string): Promise<void>;
 }
 
+export interface UpsertConnectionInput {
+  id: string;
+  ownerId: string;
+  provider: string;
+  accountId: string;
+  label: string;
+  scopes: string[];
+  accessToken: string;
+  refreshToken: string | null;
+  expiresAt: Date | null;
+  raw?: Record<string, unknown>;
+}
+
+export interface ConnectionTokenPatch {
+  accessToken?: string;
+  refreshToken?: string | null;
+  expiresAt?: Date | null;
+  scopes?: string[];
+  raw?: Record<string, unknown>;
+}
+
+/** OAuth connections (encrypted tokens). Reads are owner-scoped for tenant isolation. */
+export interface ConnectionStore {
+  /** Create-or-replace by (ownerId, provider, accountId). Encrypts tokens. */
+  upsert(input: UpsertConnectionInput): Promise<Connection>;
+  get(id: string, ownerId: string): Promise<Connection>; // owner-scoped; decrypts
+  listByOwner(ownerId: string): Promise<ConnectionMeta[]>; // metadata only, no tokens
+  delete(id: string, ownerId: string): Promise<Connection | null>; // owner-scoped; returns deleted (for provider revoke)
+  updateTokens(id: string, patch: ConnectionTokenPatch): Promise<void>; // refresh path
+}
+
 /** Conversation memory for AI nodes (append-only turns, keyed per conversation). */
 export interface ConversationStore {
   load(key: string, limit?: number): Promise<ConversationMessage[]>;
@@ -130,6 +163,7 @@ export interface Store {
   workflows: WorkflowRepo;
   events: EventLog;
   credentials: CredentialStore;
+  connections: ConnectionStore;
   subscriptions: SubscriptionRepo;
   apiKeys: ApiKeyRepo;
   conversations: ConversationStore;
