@@ -81,6 +81,8 @@ const EnvSchema = z.object({
   SLACK_SIGNING_SECRET: z.string().optional(),
   // Shared secret protecting internal trigger endpoints (schedule ticks).
   INTERNAL_SECRET: z.string().optional(),
+  // Shared secret protecting the admin provisioning endpoints (POST /admin/tenants).
+  ADMIN_SECRET: z.string().optional(),
   // Optional HMAC secret; when set, /hooks/:id requires a valid x-signature.
   WEBHOOK_SECRET: z.string().optional(),
 

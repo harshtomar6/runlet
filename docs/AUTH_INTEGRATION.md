@@ -81,8 +81,8 @@ Defense in depth. Use a single shared owner only for single-tenant/internal use.
   first key).
 
 > Note the asymmetry: `POST /api-keys` can only mint for the *caller's* owner.
-> Creating a key for a **new** owner is a privileged operation (the CLI today,
-> or the admin endpoint below).
+> Creating a key for a **new** owner is a privileged operation — the
+> `create-api-key` CLI, or `POST /admin/tenants` (guarded by `ADMIN_SECRET`; below).
 
 ### 1. Onboard a tenant → provision its owner key (server-side)
 
@@ -99,15 +99,16 @@ pnpm create-api-key --owner "$TENANT_ID" --name "bff"
 # → capture the printed key ONCE, encrypt, store as tenants.runletKey
 ```
 
-**Setup B — your BFF is a separate service (the common case):** add a small
-**admin provisioning endpoint** to Runlet, guarded by a shared `ADMIN_SECRET`,
-that mints a key for a new owner. (Recommended addition — not built yet; sketch:)
+**Setup B — your BFF is a separate service (the common case):** use the built-in
+**admin provisioning endpoint**, guarded by a shared `ADMIN_SECRET` (set it in
+Runlet's env; fail-closed — `503` if unset, `401` on a bad secret):
 ```
 POST /admin/tenants           headers: x-admin-secret: <ADMIN_SECRET>
-  body: { ownerId, name }
-  → { ownerId, key }          # returned once; your BFF encrypts + stores it
+  body: { ownerId, name? }               # ownerId = your stable tenant id
+  → 201 { ownerId, id, prefix, key }     # `key` is returned ONCE — encrypt + store it
 ```
-Your BFF calls this once per tenant at onboarding, then never again.
+Your BFF calls this once per tenant at onboarding, then never again. This is the
+one operation `/api-keys` can't do (it only mints for the *caller's* owner).
 
 Either way you end up with a server-side map:
 ```

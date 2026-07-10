@@ -4,6 +4,7 @@ import { env } from "../config/env";
 import { engineRoute } from "../engine/upstash";
 import { onError } from "./middleware/error";
 import { requestId } from "./middleware/request-id";
+import { admin } from "./routes/admin";
 import { events } from "./routes/events";
 import { health } from "./routes/health";
 import { hooks } from "./routes/hooks";
@@ -67,6 +68,7 @@ export function createApp(): Hono<AppEnv> {
   app.route("/hooks", hooks); // public webhook entrypoint (optional HMAC)
   app.route("/slack/events", slackEvents); // public Slack Events API ingress (signature-verified)
   app.route("/triggers", internalTriggers); // internal schedule ticks (secret)
+  app.route("/admin", admin); // privileged tenant provisioning (ADMIN_SECRET)
 
   // Durable engine endpoint (QStash-invoked). The Upstash Hono adapter expects
   // WorkflowBindings; our app supplies them from env at runtime.
