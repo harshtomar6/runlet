@@ -85,9 +85,17 @@ export async function evalCondition(expr: string, scope: Scope): Promise<boolean
   return Boolean(await resolveString(expr, scope));
 }
 
+/** `{{ $secret.* }}` is resolved LATE by the node holding the credential, so it
+ *  never enters the general scope or the logged inputs. The general pass leaves
+ *  it verbatim. */
+const referencesSecret = (expr: string): boolean => /\$secret\b/.test(expr);
+
 async function resolveString(value: string, scope: Scope): Promise<unknown> {
   const full = value.match(FULL);
-  if (full) return evalExpr(full[1] ?? "", scope);
+  if (full) {
+    if (referencesSecret(full[1] ?? "")) return value; // preserve placeholder
+    return evalExpr(full[1] ?? "", scope);
+  }
 
   if (!PART.test(value)) return value;
   PART.lastIndex = 0;
@@ -96,12 +104,62 @@ async function resolveString(value: string, scope: Scope): Promise<unknown> {
   let last = 0;
   for (const m of value.matchAll(PART)) {
     out += value.slice(last, m.index);
-    const v = await evalExpr((m[1] ?? "").trim(), scope);
-    out += v === undefined || v === null ? "" : String(v);
+    const inner = (m[1] ?? "").trim();
+    if (referencesSecret(inner)) {
+      out += m[0]; // preserve {{ $secret.* }} for late resolution
+    } else {
+      const v = await evalExpr(inner, scope);
+      out += v === undefined || v === null ? "" : String(v);
+    }
     last = (m.index ?? 0) + m[0].length;
   }
   out += value.slice(last);
   return out;
+}
+
+/**
+ * Resolve ONLY `{{ $secret.* }}` placeholders, binding `$secret` to `secret`.
+ * A node calls this AFTER its inputs are logged, so credential values never
+ * touch the general scope or the run event log.
+ */
+export async function resolveSecretRefs(value: unknown, secret: Record<string, unknown>): Promise<unknown> {
+  if (typeof value === "string") {
+    const full = value.match(FULL);
+    if (full && referencesSecret(full[1] ?? "")) return evalWithSecret((full[1] ?? "").trim(), secret);
+    if (!referencesSecret(value)) return value;
+    let out = "";
+    let last = 0;
+    for (const m of value.matchAll(PART)) {
+      out += value.slice(last, m.index);
+      const inner = (m[1] ?? "").trim();
+      const v = referencesSecret(inner) ? await evalWithSecret(inner, secret) : m[0];
+      out += v === undefined || v === null ? "" : String(v);
+      last = (m.index ?? 0) + m[0].length;
+    }
+    out += value.slice(last);
+    return out;
+  }
+  if (Array.isArray(value)) return Promise.all(value.map((v) => resolveSecretRefs(v, secret)));
+  if (value && typeof value === "object") {
+    const o: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) o[k] = await resolveSecretRefs(v, secret);
+    return o;
+  }
+  return value;
+}
+
+async function evalWithSecret(expr: string, secret: Record<string, unknown>): Promise<unknown> {
+  let compiled: ReturnType<typeof jsonata>;
+  try {
+    compiled = jsonata(expr);
+  } catch (err) {
+    throw new ExpressionError(expr, err);
+  }
+  try {
+    return await withTimeout(compiled.evaluate(undefined, { secret }), EVAL_TIMEOUT_MS, expr);
+  } catch (err) {
+    throw new ExpressionError(expr, err);
+  }
 }
 
 async function evalExpr(expr: string, scope: Scope): Promise<unknown> {

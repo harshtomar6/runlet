@@ -450,6 +450,15 @@ its **params**. Params marked *(expr)* commonly hold `{{ expressions }}`.
   | `connectionId` | string | no | inject `Authorization: Bearer <token>` from an OAuth connection |
 - **Output data:** `{ status: number, body: any }`.
 - **Auth injection:** instead of putting a token in `headers` (which lives in the workflow JSON), set `credentialId` (secret `{ bearerToken }` → `Authorization: Bearer …`, or `{ headers: {…} }` → merged) or `connectionId` (an OAuth connection's access token as a Bearer). Injected headers override inline ones.
+- **Secret templating (`{{ $secret.* }}`):** reference **any field** of the referenced `credentialId`'s secret anywhere in `url`, `headers`, or `body` — for APIs that don't use a Bearer header. `$secret` is bound to the credential's `secret` object and resolved **late** (never logged / never in the workflow scope). Example — Telegram (token in the URL path), with a credential of any `type` whose secret is `{ "botToken": "123:ABC" }`:
+  ```jsonc
+  { "type": "http.request", "params": {
+      "method": "POST",
+      "url": "https://api.telegram.org/bot{{ $secret.botToken }}/sendMessage",
+      "body": { "chat_id": "{{ trigger.chatId }}", "text": "hi" },
+      "credentialId": "<telegram-cred-id>" } }
+  ```
+  (For a connection, `$secret` exposes `{ accessToken, accountId, ...raw }`.)
 - **Non-2xx handling:** by default a 4xx/5xx is a **normal success** — the node returns `{ status, body }` on the `success` port; branch on `{{ node.status }}` to react. Set **`failOnError: true`** to make a non-2xx **fail the node** (throws → the run fails/retries). The node only errors on its own when the request can't complete (network/timeout/SSRF-blocked).
 
 ### 8.3 Email (`app: email`)
