@@ -365,7 +365,8 @@ secret values are never returned.
   See [§10](#10-credentials-reference) for the `secret` shape per type.
 - **Response `data`:** `{ id, type }`. Use `id` as a node's `credentialId`.
 
-#### `GET /credentials` — list metadata `{ id, type, createdAt }` (no secrets).
+#### `GET /credentials` — list metadata `{ id, type, secretKeys, createdAt }` (no secret values).
+`secretKeys` are the secret's field **names** (e.g. `["botToken"]`) — they tell you what to reference as `{{ $secret.<key> }}` in an `http.request`, without exposing the values. (`POST /credentials` also returns `secretKeys` in its response.)
 #### `DELETE /credentials/:id` — remove (owner-scoped; `404` if not yours).
 
 ---
@@ -761,6 +762,12 @@ Create with `POST /credentials { type, secret }`, then set the returned `id` as 
 node's `params.credentialId`. Secrets are encrypted and never returned. Without a
 credential (or a server env fallback), provider nodes run as a **dry-run** (no real
 side effect, `dryRun: true` in output).
+
+`type` and `secret` shape are **free-form** — no schema/validation, so you can store
+whatever any integration needs. To *use* an arbitrary secret, list credentials
+(`GET /credentials`) to see its `secretKeys` (field names), then reference them as
+`{{ $secret.<key> }}` in an `http.request` (see §8.2). The known-provider shapes
+below are just conventions the built-in connectors read:
 
 | `type` | `secret` shape | Used by |
 |---|---|---|

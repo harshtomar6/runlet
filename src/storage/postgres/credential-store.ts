@@ -37,16 +37,15 @@ export class PostgresCredentialStore implements CredentialStore {
   }
 
   async list(ownerId: string): Promise<CredentialMeta[]> {
-    const rows = await db()
-      .select({
-        id: credentials.id,
-        ownerId: credentials.ownerId,
-        type: credentials.type,
-        createdAt: credentials.createdAt,
-      })
-      .from(credentials)
-      .where(eq(credentials.ownerId, ownerId));
-    return rows;
+    // Include ciphertext so we can surface the secret's field NAMES (not values).
+    const rows = await db().select().from(credentials).where(eq(credentials.ownerId, ownerId));
+    return rows.map((r) => ({
+      id: r.id,
+      ownerId: r.ownerId,
+      type: r.type,
+      secretKeys: secretKeysOf(r.ciphertext),
+      createdAt: r.createdAt,
+    }));
   }
 
   async delete(id: string, ownerId: string): Promise<boolean> {
@@ -55,5 +54,14 @@ export class PostgresCredentialStore implements CredentialStore {
       .where(and(eq(credentials.id, id), eq(credentials.ownerId, ownerId)))
       .returning({ id: credentials.id });
     return removed.length > 0;
+  }
+}
+
+/** Top-level field names of an encrypted secret (values never exposed). */
+function secretKeysOf(ciphertext: Buffer): string[] {
+  try {
+    return Object.keys(decryptJson<Record<string, unknown>>(ciphertext));
+  } catch {
+    return [];
   }
 }
