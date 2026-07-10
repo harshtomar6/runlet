@@ -446,7 +446,10 @@ its **params**. Params marked *(expr)* commonly hold `{{ expressions }}`.
   | `headers` | object<string,string> *(expr)* | no | — |
   | `body` | any *(expr)* | no | — |
   | `failOnError` | boolean | no | `false` |
+  | `credentialId` | string | no | inject auth from an encrypted `http` credential |
+  | `connectionId` | string | no | inject `Authorization: Bearer <token>` from an OAuth connection |
 - **Output data:** `{ status: number, body: any }`.
+- **Auth injection:** instead of putting a token in `headers` (which lives in the workflow JSON), set `credentialId` (secret `{ bearerToken }` → `Authorization: Bearer …`, or `{ headers: {…} }` → merged) or `connectionId` (an OAuth connection's access token as a Bearer). Injected headers override inline ones.
 - **Non-2xx handling:** by default a 4xx/5xx is a **normal success** — the node returns `{ status, body }` on the `success` port; branch on `{{ node.status }}` to react. Set **`failOnError: true`** to make a non-2xx **fail the node** (throws → the run fails/retries). The node only errors on its own when the request can't complete (network/timeout/SSRF-blocked).
 
 ### 8.3 Email (`app: email`)
@@ -756,9 +759,11 @@ side effect, `dryRun: true` in output).
 | `slack` | `{ "webhookUrl": "https://hooks.slack.com/..." }` | `slack.post` (webhook mode — no threading) |
 | `smtp` | `{ "host", "port", "user", "pass", "from", "secure?" }` | `email.smtp` |
 | `openrouter` | `{ "apiKey": "sk-or-..." }` | all `ai.*` (fallback: `OPENROUTER_API_KEY`) |
+| `http` | `{ "bearerToken": "..." }` or `{ "headers": { "X-Api-Key": "..." } }` | `http.request` (via `credentialId`) |
 
-`http.request` needs no credential — put any auth token directly in `headers`
-(e.g. `{ "Authorization": "Bearer ..." }`).
+`http.request` can also inline auth in `headers`, but prefer `credentialId`
+(type `http`) or `connectionId` so the token stays encrypted, out of the
+workflow JSON.
 
 ### OAuth connections
 

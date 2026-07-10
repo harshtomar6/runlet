@@ -85,20 +85,42 @@ export const httpRequest = defineNode({
   description:
     "Makes an outbound HTTP request. By default a non-2xx status is returned as a normal " +
     "success ({ status, body }) — branch on {{ node.status }} to handle it. Set `failOnError: true` " +
-    "to make a 4xx/5xx fail the node instead (throws → the run fails/retries).",
+    "to make a 4xx/5xx fail the node instead. Auth can be injected from an encrypted credential " +
+    "(`credentialId`, secret `{ bearerToken }` or `{ headers }`) or an OAuth connection " +
+    "(`connectionId` → `Authorization: Bearer <token>`) — so tokens never live in the workflow JSON.",
   inputSchema: z.object({
     method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]).default("GET"),
     url: z.string().min(1),
     headers: z.record(z.string()).optional(),
     body: z.unknown().optional(),
     failOnError: z.boolean().default(false), // true → throw on non-2xx status
+    credentialId: z.string().optional(), // inject auth from an encrypted credential
+    connectionId: z.string().optional(), // inject Bearer from an OAuth connection
   }),
   outputs: ["success", "error"],
-  execute: async ({ inputs, rt }) => {
+  credentials: ["http"],
+  execute: async ({ inputs, params, rt }) => {
+    // Auth injection: injected headers win over inline ones (so a stored token
+    // overrides any placeholder). Tokens stay out of the workflow definition.
+    const injected: Record<string, string> = {};
+    if (params.connectionId) {
+      if (!rt.connections) throw new Error("http.request: connections are unavailable in this runtime");
+      const conn = await rt.connections.get(String(params.connectionId), rt.ownerId);
+      injected.authorization = `Bearer ${conn.accessToken}`;
+    } else if (params.credentialId) {
+      const creds = await rt.credentials.get(String(params.credentialId), rt.ownerId);
+      const s = creds.secret as { bearerToken?: unknown; headers?: unknown };
+      if (typeof s.bearerToken === "string") injected.authorization = `Bearer ${s.bearerToken}`;
+      if (s.headers && typeof s.headers === "object") {
+        Object.assign(injected, s.headers as Record<string, string>);
+      }
+    }
+    const headers = { ...(inputs.headers as Record<string, string> | undefined), ...injected };
+
     const res = await rt.connectors.http.request({
       method: String(inputs.method ?? "GET"),
       url: String(inputs.url),
-      headers: inputs.headers as Record<string, string> | undefined,
+      headers: Object.keys(headers).length > 0 ? headers : undefined,
       body: inputs.body,
     });
     const ok = res.status >= 200 && res.status < 300;

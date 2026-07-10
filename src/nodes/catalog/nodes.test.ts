@@ -5,6 +5,7 @@ import type { DecryptedSecret } from "../../domain/types";
 import type { CredentialStore } from "../../ports";
 import { MemoryConversationStore } from "../../storage/memory/conversation-store";
 import { MemoryKVState } from "../../storage/memory/kv-state";
+import { MemoryStore } from "../../storage/memory/store";
 import type { NodeExecArgs, NodeRuntime } from "../define";
 import type { Connectors } from "../../connectors";
 import { httpRequest, smtpSend } from "./actions";
@@ -79,6 +80,41 @@ test("http.request: non-2xx is success by default, fails only with failOnError",
     () => httpRequest.execute!({ inputs: { method: "GET", url: "https://x", failOnError: true }, params: {}, rt: rtWith500 }),
     /HTTP 500/,
   );
+});
+
+test("http.request injects auth from a credential and an OAuth connection", async () => {
+  const store = new MemoryStore();
+  let captured: Record<string, string> | undefined;
+  const conns: Connectors = {
+    ...dryRunConnectors(),
+    http: {
+      async request(input) {
+        captured = input.headers as Record<string, string> | undefined;
+        return { status: 200, body: {} };
+      },
+    },
+  };
+  const base: NodeRuntime = {
+    kv: store.kv, credentials: store.credentials, connections: store.connections,
+    connectors: conns, conversations: store.conversations, ownerId: "o",
+    runId: "r", workflowRunId: "wr", stepId: "s",
+  };
+
+  // bearerToken credential → Authorization: Bearer …, inline headers preserved
+  await store.credentials.put({ id: "c1", ownerId: "o", type: "http", secret: { bearerToken: "tok123" } });
+  await httpRequest.execute!({ inputs: { method: "GET", url: "https://x", headers: { "X-A": "1" } }, params: { credentialId: "c1" }, rt: base });
+  assert.equal(captured?.authorization, "Bearer tok123");
+  assert.equal(captured?.["X-A"], "1");
+
+  // headers-object credential
+  await store.credentials.put({ id: "c2", ownerId: "o", type: "http", secret: { headers: { "X-Api-Key": "k" } } });
+  await httpRequest.execute!({ inputs: { method: "GET", url: "https://x" }, params: { credentialId: "c2" }, rt: base });
+  assert.equal(captured?.["X-Api-Key"], "k");
+
+  // OAuth connection → Bearer <accessToken>
+  await store.connections.upsert({ id: "conn1", ownerId: "o", provider: "x", accountId: "a", label: "l", scopes: [], accessToken: "AT", refreshToken: null, expiresAt: null });
+  await httpRequest.execute!({ inputs: { method: "GET", url: "https://x" }, params: { connectionId: "conn1" }, rt: base });
+  assert.equal(captured?.authorization, "Bearer AT");
 });
 
 test("email.smtp dry-runs without a credential", async () => {
