@@ -1,11 +1,20 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { ActivateSchema, CreateWorkflowSchema, UpdateWorkflowSchema } from "../../domain/schemas";
+import {
+  ActivateSchema,
+  CreateWorkflowSchema,
+  EdgeSchema,
+  NodeSchema,
+  TriggerConfigSchema,
+  UpdateWorkflowSchema,
+} from "../../domain/schemas";
 import { ApiError } from "../../errors";
 import { defaultConnectors } from "../../connectors/default";
 import { dispatcher } from "../../engine/dispatch";
 import { scheduleManager } from "../../engine/schedule";
+import { DryRunService } from "../../services/dry-run-service";
 import { NodeTestService } from "../../services/node-test-service";
+import { validateGraph } from "../../services/validation";
 import { WorkflowService } from "../../services/workflow-service";
 import { store } from "../../storage/factory";
 import { auth } from "../middleware/auth";
@@ -15,6 +24,15 @@ import type { AppEnv } from "../types";
 
 const service = new WorkflowService(store, scheduleManager);
 const nodeTests = new NodeTestService(store, defaultConnectors());
+const dryRuns = new DryRunService(store);
+
+// Stateless graph body (no name/persistence) — for validate & dry-run.
+const GraphSchema = z.object({
+  trigger: TriggerConfigSchema,
+  nodes: z.array(NodeSchema).default([]),
+  edges: z.array(EdgeSchema).default([]),
+});
+const DryRunSchema = GraphSchema.extend({ input: z.unknown().optional() });
 
 const TestNodeSchema = z.object({
   nodeId: z.string().min(1),
@@ -40,6 +58,19 @@ workflows.post("/", async (c) => {
   const input = await parseBody(c, CreateWorkflowSchema);
   const res = await service.create(c.get("ownerId"), input);
   return ok(c, res, {}, 201);
+});
+
+// Stateless validation — no draft to create first (tight loop for builders/agents).
+workflows.post("/validate", async (c) => {
+  const input = await parseBody(c, GraphSchema);
+  return ok(c, validateGraph(input));
+});
+
+// Simulate the whole graph with NO side effects — returns every node's output +
+// the event timeline (or the error + partial trace). The "does it run" check.
+workflows.post("/dry-run", async (c) => {
+  const input = await parseBody(c, DryRunSchema);
+  return ok(c, await dryRuns.run(c.get("ownerId"), input));
 });
 
 workflows.get("/", async (c) => {
