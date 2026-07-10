@@ -12,6 +12,7 @@ import { ApiError } from "../../errors";
 import { defaultConnectors } from "../../connectors/default";
 import { dispatcher } from "../../engine/dispatch";
 import { scheduleManager } from "../../engine/schedule";
+import { buildNodeResolver } from "../../nodes/custom";
 import { DryRunService } from "../../services/dry-run-service";
 import { NodeTestService } from "../../services/node-test-service";
 import { validateGraph } from "../../services/validation";
@@ -63,7 +64,8 @@ workflows.post("/", async (c) => {
 // Stateless validation — no draft to create first (tight loop for builders/agents).
 workflows.post("/validate", async (c) => {
   const input = await parseBody(c, GraphSchema);
-  return ok(c, validateGraph(input));
+  const resolve = await buildNodeResolver(store, c.get("ownerId"));
+  return ok(c, validateGraph(input, resolve));
 });
 
 // Simulate the whole graph with NO side effects — returns every node's output +

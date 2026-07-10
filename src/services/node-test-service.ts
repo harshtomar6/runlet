@@ -4,7 +4,7 @@ import { newId } from "../domain/ids";
 import { resolveInputs } from "../engine/expr";
 import type { Scope } from "../engine/expr";
 import { ApiError } from "../errors";
-import { getNode } from "../nodes";
+import { buildNodeResolver } from "../nodes/custom";
 import type { NodeOutcome } from "../nodes/define";
 import type { Store } from "../ports";
 
@@ -35,7 +35,8 @@ export class NodeTestService {
     const node = version.nodes.find((n) => n.id === input.nodeId);
     if (!node) throw new ApiError(404, "not_found", `Node not found: ${input.nodeId}`);
 
-    const def = getNode(node.type);
+    const resolve = await buildNodeResolver(this.store, ownerId);
+    const def = resolve(node.type);
     if (!def) throw new ApiError(400, "unknown_node_type", `Unknown node type: ${node.type}`);
     if (def.kind === "wait") return { data: { note: "wait nodes have no output to test" } };
     if (!def.execute) throw new ApiError(400, "no_runtime", `Node "${node.type}" has no runtime`);

@@ -1,6 +1,7 @@
 import { serve } from "@upstash/workflow/hono";
 import { defaultConnectors } from "../connectors/default";
 import { newId } from "../domain/ids";
+import { buildNodeResolver } from "../nodes/custom";
 import { sendAlert } from "../observability/alert";
 import { store } from "../storage/factory";
 import type { ExecutionContext } from "./context";
@@ -27,6 +28,7 @@ export const engineRoute = serve<EnginePayload>(
     const def = await context.run("load-def", () =>
       store.workflows.getVersion(workflowId, versionId),
     );
+    const resolveNode = await buildNodeResolver(store, context.requestPayload.ownerId);
 
     const exec: ExecutionContext = {
       workflowRunId: context.workflowRunId,
@@ -42,6 +44,7 @@ export const engineRoute = serve<EnginePayload>(
       runId,
       def,
       trigger,
+      resolveNode,
       sink: new LoggingEventSink(new StoreEventSink(store.events)),
       rt: {
         kv: store.kv,

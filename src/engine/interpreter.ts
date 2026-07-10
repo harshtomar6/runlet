@@ -1,6 +1,7 @@
 import { newId } from "../domain/ids";
 import type { Edge, Node, RunEvent, WorkflowVersion } from "../domain/types";
 import { getNode } from "../nodes";
+import type { NodeResolver } from "../nodes/custom";
 import type { NodeDefinition, NodeOutcome, NodeRuntime } from "../nodes/define";
 import type { ExecutionContext } from "./context";
 import { parseDuration } from "./duration";
@@ -13,6 +14,8 @@ export interface RunParams {
   trigger: unknown;
   sink: EventSink;
   rt: Omit<NodeRuntime, "runId" | "workflowRunId" | "stepId">;
+  /** Resolves node types (custom-first, then built-ins). Defaults to built-ins only. */
+  resolveNode?: NodeResolver;
 }
 
 export interface RunOutcome {
@@ -30,6 +33,7 @@ const MAX_LOOP = 10_000;
  */
 export async function runWorkflow(exec: ExecutionContext, p: RunParams): Promise<RunOutcome> {
   const { def, trigger, sink } = p;
+  const resolveNode = p.resolveNode ?? getNode;
   const nodesById = new Map(def.nodes.map((n) => [n.id, n]));
   const outputs: Record<string, unknown> = {};
   // `locals` carries per-iteration bindings (e.g. loop index) into resolution.
@@ -43,7 +47,7 @@ export async function runWorkflow(exec: ExecutionContext, p: RunParams): Promise
   // so newId()/new Date() run once (checkpointed) — see DESIGN §6.1/§6.2.
   await exec.run("run-started", () => sink.append(evt(p.runId, "run.started", { input: trigger })));
 
-  const triggerNode = def.nodes.find((n) => getNode(n.type)?.kind === "trigger");
+  const triggerNode = def.nodes.find((n) => resolveNode(n.type)?.kind === "trigger");
   let roots: string[];
   if (triggerNode) {
     outputs[triggerNode.id] = trigger;
@@ -72,7 +76,7 @@ export async function runWorkflow(exec: ExecutionContext, p: RunParams): Promise
 
       const node = nodesById.get(id);
       if (!node) continue;
-      const def2 = getNode(node.type);
+      const def2 = resolveNode(node.type);
       if (!def2) throw new Error(`Unknown node type at runtime: ${node.type}`);
 
       if (def2.kind === "wait") {
