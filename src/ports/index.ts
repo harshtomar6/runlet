@@ -4,6 +4,7 @@ import type {
   Connection,
   ConnectionMeta,
   ConversationMessage,
+  CustomNodeDef,
   CredentialMeta,
   DecryptedSecret,
   EventSubscription,
@@ -149,6 +150,14 @@ export interface ConnectionStore {
   updateTokens(id: string, patch: ConnectionTokenPatch): Promise<void>; // refresh path
 }
 
+/** Custom (API-created) node definitions, owner-scoped. */
+export interface NodeDefRepo {
+  create(def: CustomNodeDef): Promise<void>;
+  get(id: string, ownerId: string): Promise<CustomNodeDef | null>;
+  listByOwner(ownerId: string): Promise<CustomNodeDef[]>;
+  delete(id: string, ownerId: string): Promise<boolean>;
+}
+
 /** Conversation memory for AI nodes (append-only turns, keyed per conversation). */
 export interface ConversationStore {
   load(key: string, limit?: number): Promise<ConversationMessage[]>;
@@ -164,6 +173,7 @@ export interface Store {
   events: EventLog;
   credentials: CredentialStore;
   connections: ConnectionStore;
+  nodeDefs: NodeDefRepo;
   subscriptions: SubscriptionRepo;
   apiKeys: ApiKeyRepo;
   conversations: ConversationStore;

@@ -8,7 +8,7 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import type { Edge, Node, TriggerConfig } from "../../domain/types";
+import type { CustomHttpRequest, CustomNodeField, Edge, Node, TriggerConfig } from "../../domain/types";
 
 /**
  * Postgres `bytea` column type for encrypted credential payloads.
@@ -151,6 +151,28 @@ export const connections = pgTable(
     ),
     // inbound event routing (provider account → connections) lands with the events slice.
     byProviderAccount: index("connections_provider_account_idx").on(t.provider, t.accountId),
+  }),
+);
+
+export const nodeDefs = pgTable(
+  "node_defs",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id").notNull(),
+    type: text("type").notNull(),
+    label: text("label").notNull(),
+    app: text("app").notNull(),
+    category: text("category").notNull(),
+    description: text("description"),
+    fields: jsonb("fields").$type<CustomNodeField[]>().notNull(),
+    request: jsonb("request").$type<CustomHttpRequest>().notNull(),
+    outputs: jsonb("outputs").$type<string[]>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    byOwner: index("node_defs_owner_idx").on(t.ownerId),
+    byOwnerType: uniqueIndex("node_defs_owner_type_idx").on(t.ownerId, t.type),
   }),
 );
 

@@ -160,6 +160,42 @@ export interface Connection {
   updatedAt: Date;
 }
 
+/** A declared input field of a custom (API-created) node. */
+export interface CustomNodeField {
+  name: string;
+  type: "string" | "number" | "boolean" | "json";
+  required?: boolean;
+  description?: string;
+}
+
+/** The HTTP action a custom node performs (templated with {{ }} / {{ $secret }}). */
+export interface CustomHttpRequest {
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  url: string;
+  headers?: Record<string, string>;
+  body?: unknown;
+}
+
+/**
+ * A custom node defined via the API (owner-scoped). Declarative only — its
+ * behavior is an HTTP request template, never arbitrary code. `type` must be
+ * namespaced under "custom." so it can't shadow a built-in.
+ */
+export interface CustomNodeDef {
+  id: string;
+  ownerId: string;
+  type: string; // e.g. "custom.telegram.send"
+  label: string;
+  app: string;
+  category: string;
+  description?: string;
+  fields: CustomNodeField[];
+  request: CustomHttpRequest;
+  outputs: string[]; // default ["success", "error"]
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 /** Connection without secrets — safe to return from the API. */
 export interface ConnectionMeta {
   id: string;

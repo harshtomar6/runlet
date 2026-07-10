@@ -2,6 +2,7 @@ import type {
   ApiKey,
   Connection,
   CredentialMeta,
+  CustomNodeDef,
   DecryptedSecret,
   EventSubscription,
   Run,
@@ -17,6 +18,7 @@ import type {
   ConversationStore,
   CredentialStore,
   EventLog,
+  NodeDefRepo,
   PutCredentialInput,
   RunQuery,
   RunSummary,
@@ -36,6 +38,7 @@ export class MemoryStore implements Store {
   readonly events: EventLog;
   readonly credentials: CredentialStore;
   readonly connections: ConnectionStore;
+  readonly nodeDefs: NodeDefRepo;
   readonly subscriptions: SubscriptionRepo;
   readonly apiKeys: ApiKeyRepo;
 
@@ -48,6 +51,7 @@ export class MemoryStore implements Store {
     { meta: Omit<CredentialMeta, "secretKeys">; secret: Record<string, unknown> }
   >();
   private readonly conns = new Map<string, Connection>();
+  private readonly customNodes = new Map<string, CustomNodeDef>();
   private readonly subs = new Map<string, EventSubscription>();
   private readonly keys = new Map<string, ApiKey>();
 
@@ -222,6 +226,25 @@ export class MemoryStore implements Store {
         if (patch.scopes) c.scopes = patch.scopes;
         if (patch.raw) c.raw = patch.raw;
         c.updatedAt = new Date();
+      },
+    };
+
+    this.nodeDefs = {
+      async create(def) {
+        self.customNodes.set(def.id, def);
+      },
+      async get(id, ownerId) {
+        const d = self.customNodes.get(id);
+        return d && d.ownerId === ownerId ? d : null;
+      },
+      async listByOwner(ownerId) {
+        return [...self.customNodes.values()].filter((d) => d.ownerId === ownerId);
+      },
+      async delete(id, ownerId) {
+        const d = self.customNodes.get(id);
+        if (!d || d.ownerId !== ownerId) return false;
+        self.customNodes.delete(id);
+        return true;
       },
     };
 

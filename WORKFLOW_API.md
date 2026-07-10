@@ -251,6 +251,7 @@ Use this to discover the exact schema/ports of any node at runtime.
   }
   ```
 - **Grouped** (`?grouped=true`): `[{ app, label, nodes: [entry...] }]`.
+- **Custom nodes:** if you send your API key, your own **custom nodes** (see §7.9) are merged into the list alongside the built-ins.
 
 #### `GET /node-types/:type`
 One catalog entry (e.g. `GET /node-types/ai.complete`). `404` if unknown.
@@ -427,6 +428,43 @@ handshake and resumes runs waiting on `slack.waitForReply`. Register it as the
 app's Event Subscription URL and set `SLACK_SIGNING_SECRET`.
 
 #### `GET /health` / `GET /` — liveness / service banner (public).
+
+---
+
+### 7.9 Custom nodes 🔒 (`/node-defs`)
+
+Define your own **declarative HTTP nodes** — turn any REST API into a reusable
+node. Behavior is an HTTP request template (no code), templated with the node's
+fields + `{{ $secret.* }}`. Custom nodes are owner-scoped and, once created,
+appear in `GET /node-types` (when authed) and are usable like any built-in.
+
+#### `POST /node-defs` → `201`
+- **Body:**
+  ```jsonc
+  {
+    "type": "custom.telegram.send",   // must be namespaced under "custom."
+    "label": "Telegram Send",
+    "app": "telegram", "category": "Telegram",
+    "fields": [ { "name": "chatId", "type": "string", "required": true },
+                { "name": "text", "type": "string", "required": true } ],
+    "request": {
+      "method": "POST",
+      "url": "https://api.telegram.org/bot{{ $secret.botToken }}/sendMessage",
+      "body": { "chat_id": "{{ chatId }}", "text": "{{ text }}" }
+    },
+    "outputs": ["success", "error"]
+  }
+  ```
+  Field `type` is one of `string|number|boolean|json`. The request template may
+  reference the node's fields (`{{ chatId }}`) and a credential (`{{ $secret.<key> }}`,
+  via the node's `credentialId`). Rejected if `type` isn't under `custom.`, collides
+  with a built-in, already exists for you, or the template has invalid expression syntax.
+- **Response `data`:** the created `CustomNodeDef`.
+
+#### `GET /node-defs` — list your custom nodes. `GET /node-defs/:id` — one. `DELETE /node-defs/:id` — remove.
+
+> Execution of custom nodes (the HTTP-template runner) is the next slice — for now
+> they're discoverable and can be wired into workflows.
 
 ---
 
