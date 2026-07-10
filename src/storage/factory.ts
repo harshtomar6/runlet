@@ -12,6 +12,7 @@ import { RedisConversationStore } from "./redis/conversation-store";
 import { PostgresApiKeyRepo } from "./postgres/api-key-repo";
 import { PostgresConnectionStore } from "./postgres/connection-store";
 import { PostgresCredentialStore } from "./postgres/credential-store";
+import { PostgresNodeDefRepo } from "./postgres/node-def-repo";
 import { PostgresEventLog } from "./postgres/event-log";
 import { PostgresSubscriptionRepo } from "./postgres/subscription-repo";
 import { PostgresWorkflowRepo } from "./postgres/workflow-repo";
@@ -78,6 +79,7 @@ export const store: Store =
         events: mkEventLog(env.EVENT_STORE),
         credentials: mkCredentialStore(env.CRED_STORE),
         connections: new PostgresConnectionStore(),
+        nodeDefs: new PostgresNodeDefRepo(),
         subscriptions: mkSubscriptionRepo(env.WORKFLOW_STORE),
         apiKeys: mkApiKeyRepo(env.WORKFLOW_STORE),
         conversations: new RedisConversationStore(), // hot memory in Redis

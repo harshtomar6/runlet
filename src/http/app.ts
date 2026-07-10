@@ -15,6 +15,7 @@ import { oauth } from "./routes/oauth";
 import { internalTriggers } from "./routes/internal-triggers";
 import { llms } from "./routes/llms";
 import { metrics } from "./routes/metrics";
+import { nodeDefs } from "./routes/node-defs";
 import { nodeTypes } from "./routes/node-types";
 import { runs } from "./routes/runs";
 import { slackEvents } from "./routes/slack-events";
@@ -51,7 +52,8 @@ export function createApp(): Hono<AppEnv> {
   app.get("/", (c) => c.json({ name: "runlet", version: "0.1.0", llms: "/llms.txt" }));
   app.route("/health", health);
   app.route("/llms.txt", llms); // public LLM build guide (llmstxt.org)
-  app.route("/node-types", nodeTypes); // public catalog
+  app.route("/node-types", nodeTypes); // public catalog (+ owner customs when authed)
+  app.route("/node-defs", nodeDefs); // authed custom-node CRUD
   app.route("/workflows", workflows); // authed (x-owner-id)
   app.route("/events", events); // authed app event ingress
   app.route("/subscriptions", subscriptions); // authed event→workflow routing

@@ -31,3 +31,22 @@ export const auth: MiddlewareHandler<AppEnv> = async (c, next) => {
   c.set("ownerId", result.ownerId);
   await next();
 };
+
+/**
+ * Optional auth: sets `ownerId` when a valid key (or AUTH_DEV_OWNER) is present,
+ * but never rejects. For public endpoints that show extra, owner-scoped data
+ * when authenticated (e.g. custom nodes in the catalog).
+ */
+export const optionalAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
+  if (env.AUTH_DEV_OWNER) {
+    c.set("ownerId", env.AUTH_DEV_OWNER);
+    return next();
+  }
+  const bearer = c.req.header("authorization")?.match(/^Bearer\s+(.+)$/i);
+  const key = bearer ? bearer[1] : c.req.header("x-api-key");
+  if (key) {
+    const result = await apiKeys.verify(key);
+    if (result) c.set("ownerId", result.ownerId);
+  }
+  await next();
+};
