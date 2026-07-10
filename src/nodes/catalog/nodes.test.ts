@@ -6,7 +6,8 @@ import type { CredentialStore } from "../../ports";
 import { MemoryConversationStore } from "../../storage/memory/conversation-store";
 import { MemoryKVState } from "../../storage/memory/kv-state";
 import type { NodeExecArgs, NodeRuntime } from "../define";
-import { smtpSend } from "./actions";
+import type { Connectors } from "../../connectors";
+import { httpRequest, smtpSend } from "./actions";
 import { filterNode, switchNode } from "./control";
 import { dataTransform } from "./data";
 import { logNode } from "./util";
@@ -59,6 +60,25 @@ test("data.transform outputs the resolved value", async () => {
 test("util.log passes the message through", async () => {
   const out = await logNode.execute!(args({ message: "hi", level: "info" }));
   assert.deepEqual(out.data, { message: "hi" });
+});
+
+test("http.request: non-2xx is success by default, fails only with failOnError", async () => {
+  const http500: Connectors = {
+    ...dryRunConnectors(),
+    http: { async request() { return { status: 500, body: { error: "boom" } }; } },
+  };
+  const rtWith500: NodeRuntime = { ...rt(), connectors: http500 };
+
+  // default: a 500 comes back as a successful node with the status.
+  const ok = await httpRequest.execute!({ inputs: { method: "GET", url: "https://x" }, params: {}, rt: rtWith500 });
+  assert.equal(ok.port, "success");
+  assert.equal((ok.data as { status: number }).status, 500);
+
+  // failOnError: the node throws on a non-2xx status.
+  await assert.rejects(
+    () => httpRequest.execute!({ inputs: { method: "GET", url: "https://x", failOnError: true }, params: {}, rt: rtWith500 }),
+    /HTTP 500/,
+  );
 });
 
 test("email.smtp dry-runs without a credential", async () => {
