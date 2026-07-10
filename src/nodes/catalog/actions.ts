@@ -82,12 +82,16 @@ export const httpRequest = defineNode({
   kind: "action",
   category: "HTTP",
   label: "HTTP Request",
-  description: "Makes an outbound HTTP request.",
+  description:
+    "Makes an outbound HTTP request. By default a non-2xx status is returned as a normal " +
+    "success ({ status, body }) — branch on {{ node.status }} to handle it. Set `failOnError: true` " +
+    "to make a 4xx/5xx fail the node instead (throws → the run fails/retries).",
   inputSchema: z.object({
     method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]).default("GET"),
     url: z.string().min(1),
     headers: z.record(z.string()).optional(),
     body: z.unknown().optional(),
+    failOnError: z.boolean().default(false), // true → throw on non-2xx status
   }),
   outputs: ["success", "error"],
   execute: async ({ inputs, rt }) => {
@@ -97,6 +101,14 @@ export const httpRequest = defineNode({
       headers: inputs.headers as Record<string, string> | undefined,
       body: inputs.body,
     });
+    const ok = res.status >= 200 && res.status < 300;
+    if (inputs.failOnError && !ok) {
+      const snippet = typeof res.body === "string" ? res.body : JSON.stringify(res.body);
+      throw new Error(
+        `HTTP ${res.status} for ${String(inputs.method ?? "GET")} ${String(inputs.url)}` +
+          (snippet ? `: ${snippet.slice(0, 200)}` : ""),
+      );
+    }
     return { data: res, port: "success" };
   },
 });

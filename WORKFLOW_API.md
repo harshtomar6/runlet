@@ -445,7 +445,9 @@ its **params**. Params marked *(expr)* commonly hold `{{ expressions }}`.
   | `url` | string *(expr)* | **yes** | — |
   | `headers` | object<string,string> *(expr)* | no | — |
   | `body` | any *(expr)* | no | — |
+  | `failOnError` | boolean | no | `false` |
 - **Output data:** `{ status: number, body: any }`.
+- **Non-2xx handling:** by default a 4xx/5xx is a **normal success** — the node returns `{ status, body }` on the `success` port; branch on `{{ node.status }}` to react. Set **`failOnError: true`** to make a non-2xx **fail the node** (throws → the run fails/retries). The node only errors on its own when the request can't complete (network/timeout/SSRF-blocked).
 
 ### 8.3 Email (`app: email`)
 
