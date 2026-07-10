@@ -95,6 +95,7 @@ export interface CredentialMeta {
   id: string;
   ownerId: string;
   type: string; // "resend" | "slack" | "http_bearer" ...
+  secretKeys: string[]; // field NAMES of the secret (not values) — so you know what to reference as {{ $secret.<key> }}
   createdAt: Date;
 }
 

@@ -21,7 +21,9 @@ credentials.post("/", async (c) => {
   const input = await parseBody(c, CreateCredentialSchema);
   const id = newId();
   await store.credentials.put({ id, ownerId: c.get("ownerId"), type: input.type, secret: input.secret });
-  return ok(c, { id, type: input.type }, {}, 201);
+  // Echo the secret's field NAMES (not values) so the caller knows what to
+  // reference as {{ $secret.<key> }} — no shape validation.
+  return ok(c, { id, type: input.type, secretKeys: Object.keys(input.secret) }, {}, 201);
 });
 
 credentials.get("/", async (c) => ok(c, await store.credentials.list(c.get("ownerId"))));

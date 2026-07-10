@@ -18,3 +18,12 @@ test("credentials.get is owner-scoped", async () => {
   // from "does not exist" (no existence leak).
   await assert.rejects(() => store.credentials.get("cred1", "owner-B"), NotFoundError);
 });
+
+test("list exposes secret field NAMES (not values) for discoverability", async () => {
+  const store = new MemoryStore();
+  await store.credentials.put({ id: "c1", ownerId: "o", type: "telegram", secret: { botToken: "123:ABC", chatId: "42" } });
+  const [meta] = await store.credentials.list("o");
+  assert.deepEqual(meta!.secretKeys.sort(), ["botToken", "chatId"]);
+  // ...but never the values.
+  assert.ok(!JSON.stringify(meta).includes("123:ABC"));
+});

@@ -43,7 +43,10 @@ export class MemoryStore implements Store {
   private readonly versions = new Map<string, WorkflowVersion>();
   private readonly runs = new Map<string, Run>();
   private readonly runEvents: RunEvent[] = [];
-  private readonly creds = new Map<string, { meta: CredentialMeta; secret: Record<string, unknown> }>();
+  private readonly creds = new Map<
+    string,
+    { meta: Omit<CredentialMeta, "secretKeys">; secret: Record<string, unknown> }
+  >();
   private readonly conns = new Map<string, Connection>();
   private readonly subs = new Map<string, EventSubscription>();
   private readonly keys = new Map<string, ApiKey>();
@@ -158,7 +161,9 @@ export class MemoryStore implements Store {
         });
       },
       async list(ownerId) {
-        return [...self.creds.values()].filter((c) => c.meta.ownerId === ownerId).map((c) => c.meta);
+        return [...self.creds.values()]
+          .filter((c) => c.meta.ownerId === ownerId)
+          .map((c) => ({ ...c.meta, secretKeys: Object.keys(c.secret) }));
       },
       async delete(id, ownerId) {
         const c = self.creds.get(id);
