@@ -291,6 +291,20 @@ Structurally validate (optionally `?versionId=`). **Do this before activating.**
 - **Response `data`:** `{ ok: boolean, errors: [{ code, message, nodeId? }] }`.
   See [§11](#11-validation-rules--gotchas) for codes.
 
+#### `POST /workflows/validate`  *(stateless — no workflow needed)*
+Validate a graph **without creating anything** — ideal for a build loop.
+- **Body:** `{ trigger, nodes, edges }` (a workflow object without `name`).
+- **Response `data`:** `{ ok, errors: [{ code, message, nodeId? }] }`.
+
+#### `POST /workflows/dry-run`  *(stateless — simulate, no side effects)*
+Run the whole graph in **simulation**: dry-run connectors (no real email/HTTP/Slack/AI),
+isolated in-memory state, but your **real credentials/connections** so references resolve.
+Returns every node's output and the event timeline — the "does it actually run" check
+before you activate.
+- **Body:** `{ trigger, nodes, edges, input? }` — `input` is the sample trigger payload (becomes `{{ trigger }}`).
+- **Response `data`:** `{ ok, validation, outputs: { <nodeId>: <data> }, events: [...], sleeps: [...], error? }`.
+  On a failure, `ok:false` with `error` and the partial `events` (including the `node.failed` with its `nodeId`) — so you can see exactly where and why it broke. External calls return dry stubs (e.g. `http.request` → `{ status: 200, body: { dryRun: true } }`), so this checks wiring/expressions/routing, not real API payloads.
+
 #### `POST /workflows/:id/activate`
 Mark a version active so schedule/webhook/event triggers fire.
 - **Body:** `{ versionId: "..." }`.
