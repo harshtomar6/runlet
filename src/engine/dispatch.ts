@@ -5,6 +5,7 @@ import { newId } from "../domain/ids";
 import type { Run } from "../domain/types";
 import type { Store } from "../ports";
 import { store as defaultStore } from "../storage/factory";
+import { buildNodeResolver } from "../nodes/custom";
 import { LocalExecutionContext } from "./local-context";
 import { LoggingEventSink } from "./logging-sink";
 import { runWorkflow } from "./interpreter";
@@ -43,12 +44,14 @@ export class LocalDispatcher implements Dispatcher {
     const runId = newId();
     await this.store.events.createRun(newRunRow(runId, input));
     const def = await this.store.workflows.getVersion(input.workflowId, input.versionId);
+    const resolveNode = await buildNodeResolver(this.store, input.ownerId);
     const exec = new LocalExecutionContext(runId);
     try {
       await runWorkflow(exec, {
         runId,
         def,
         trigger: input.trigger,
+        resolveNode,
         sink: new LoggingEventSink(new StoreEventSink(this.store.events)),
         rt: {
           kv: this.store.kv,

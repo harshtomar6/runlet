@@ -4,6 +4,7 @@ import type { Edge, Node, RunEvent, TriggerConfig, WorkflowVersion } from "../do
 import { LocalExecutionContext } from "../engine/local-context";
 import { runWorkflow } from "../engine/interpreter";
 import { MemoryEventSink } from "../engine/sink";
+import { buildNodeResolver } from "../nodes/custom";
 import type { Store } from "../ports";
 import { MemoryStore } from "../storage/memory/store";
 import { validateGraph, type ValidationResult } from "./validation";
@@ -35,7 +36,8 @@ export class DryRunService {
   constructor(private readonly store: Store) {}
 
   async run(ownerId: string, input: DryRunInput): Promise<DryRunResult> {
-    const validation = validateGraph({ trigger: input.trigger, nodes: input.nodes, edges: input.edges });
+    const resolveNode = await buildNodeResolver(this.store, ownerId);
+    const validation = validateGraph({ trigger: input.trigger, nodes: input.nodes, edges: input.edges }, resolveNode);
     if (!validation.ok) {
       return { ok: false, validation, outputs: {}, events: [], sleeps: [] };
     }
@@ -58,6 +60,7 @@ export class DryRunService {
         runId,
         def,
         trigger: input.input ?? {},
+        resolveNode,
         sink,
         rt: {
           kv: scratch.kv,

@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { Edge, Node, TriggerConfig } from "../domain/types";
 import { expressionSyntaxErrors } from "../engine/expr";
 import { getNode } from "../nodes";
+import type { NodeResolver } from "../nodes/custom";
 
 export interface ValidationIssue {
   code: string;
@@ -25,7 +26,7 @@ export interface GraphInput {
  * Deliberately does not type-check expression values (a param may hold a
  * `{{ ... }}` expression instead of a literal); it checks shape and wiring.
  */
-export function validateGraph(input: GraphInput): ValidationResult {
+export function validateGraph(input: GraphInput, resolve: NodeResolver = getNode): ValidationResult {
   const errors: ValidationIssue[] = [];
   const { nodes, edges } = input;
 
@@ -40,7 +41,7 @@ export function validateGraph(input: GraphInput): ValidationResult {
   const byId = new Map(nodes.map((n) => [n.id, n]));
 
   // Trigger nodes: exactly one, and it must match the workflow's trigger type
-  const triggerNodes = nodes.filter((n) => getNode(n.type)?.kind === "trigger");
+  const triggerNodes = nodes.filter((n) => resolve(n.type)?.kind === "trigger");
   if (triggerNodes.length === 0) {
     errors.push({ code: "no_trigger", message: "Workflow has no trigger node" });
   } else if (triggerNodes.length > 1) {
@@ -62,7 +63,7 @@ export function validateGraph(input: GraphInput): ValidationResult {
 
   // Unknown node types + required params
   for (const n of nodes) {
-    const def = getNode(n.type);
+    const def = resolve(n.type);
     if (!def) {
       errors.push({ code: "unknown_node_type", message: `Unknown node type "${n.type}"`, nodeId: n.id });
       continue;
@@ -95,7 +96,7 @@ export function validateGraph(input: GraphInput): ValidationResult {
     if (!from) {
       errors.push({ code: "dangling_edge", message: `Edge from unknown node "${e.from.nodeId}"`, nodeId: e.from.nodeId });
     } else {
-      const def = getNode(from.type);
+      const def = resolve(from.type);
       if (def && !def.outputs.includes(e.from.port)) {
         errors.push({
           code: "invalid_output_port",
@@ -129,7 +130,7 @@ export function validateGraph(input: GraphInput): ValidationResult {
     for (const next of adjacency.get(id) ?? []) queue.push(next);
   }
   for (const n of nodes) {
-    if (getNode(n.type)?.kind === "trigger") continue;
+    if (resolve(n.type)?.kind === "trigger") continue;
     if (!reachable.has(n.id)) {
       errors.push({ code: "orphan_node", message: `Node "${n.id}" is not reachable from the trigger`, nodeId: n.id });
     }

@@ -3,6 +3,7 @@ import type { ScheduleManager } from "../engine/schedule";
 import type { CreateWorkflowInput, UpdateWorkflowInput } from "../domain/schemas";
 import type { Workflow, WorkflowVersion } from "../domain/types";
 import { ApiError, ValidationFailed } from "../errors";
+import { buildNodeResolver } from "../nodes/custom";
 import { NotFoundError } from "../ports/errors";
 import type { Store, WorkflowFilter } from "../ports";
 import { validateGraph, type ValidationResult } from "./validation";
@@ -117,14 +118,16 @@ export class WorkflowService {
   async validate(ownerId: string, id: string, versionId?: string): Promise<ValidationResult> {
     const wf = await this.get(ownerId, id);
     const version = await this.resolveVersion(id, versionId);
-    return validateGraph({ trigger: wf.trigger, nodes: version.nodes, edges: version.edges });
+    const resolve = await buildNodeResolver(this.store, ownerId);
+    return validateGraph({ trigger: wf.trigger, nodes: version.nodes, edges: version.edges }, resolve);
   }
 
   /** Activate a version after it passes validation. */
   async activate(ownerId: string, id: string, versionId: string): Promise<void> {
     const wf = await this.get(ownerId, id);
     const version = await this.store.workflows.getVersion(id, versionId);
-    const result = validateGraph({ trigger: wf.trigger, nodes: version.nodes, edges: version.edges });
+    const resolve = await buildNodeResolver(this.store, ownerId);
+    const result = validateGraph({ trigger: wf.trigger, nodes: version.nodes, edges: version.edges }, resolve);
     if (!result.ok) throw new ValidationFailed(result.errors);
     await this.store.workflows.activate(id, versionId);
 

@@ -463,8 +463,15 @@ appear in `GET /node-types` (when authed) and are usable like any built-in.
 
 #### `GET /node-defs` — list your custom nodes. `GET /node-defs/:id` — one. `DELETE /node-defs/:id` — remove.
 
-> Execution of custom nodes (the HTTP-template runner) is the next slice — for now
-> they're discoverable and can be wired into workflows.
+**Using a custom node in a workflow:** reference its `type` like any built-in. Its
+`params` are the declared fields (+ optional `credentialId`/`connectionId`). At run
+time the engine fills the stored request template — `{{ field }}` from the node's
+params, `{{ $secret.* }}` from the referenced credential/connection — and performs the
+(SSRF-safe) HTTP request, returning `{ status, body }` on the `success` port. Example:
+```jsonc
+{ "id": "tg", "type": "custom.telegram.send",
+  "params": { "chatId": "{{ trigger.chatId }}", "text": "hi", "credentialId": "<telegram-cred-id>" } }
+```
 
 ---
 
