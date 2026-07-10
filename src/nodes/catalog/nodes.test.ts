@@ -117,6 +117,33 @@ test("http.request injects auth from a credential and an OAuth connection", asyn
   assert.equal(captured?.authorization, "Bearer AT");
 });
 
+test("http.request resolves {{ $secret.* }} into the URL (e.g. Telegram token)", async () => {
+  const store = new MemoryStore();
+  let capturedUrl: string | undefined;
+  const conns: Connectors = {
+    ...dryRunConnectors(),
+    http: {
+      async request(input) {
+        capturedUrl = input.url;
+        return { status: 200, body: { ok: true } };
+      },
+    },
+  };
+  const rt2: NodeRuntime = {
+    kv: store.kv, credentials: store.credentials, connections: store.connections,
+    connectors: conns, conversations: store.conversations, ownerId: "o",
+    runId: "r", workflowRunId: "wr", stepId: "s",
+  };
+  await store.credentials.put({ id: "tg", ownerId: "o", type: "telegram", secret: { botToken: "123:ABC" } });
+
+  await httpRequest.execute!({
+    inputs: { method: "POST", url: "https://api.telegram.org/bot{{ $secret.botToken }}/sendMessage" },
+    params: { credentialId: "tg" },
+    rt: rt2,
+  });
+  assert.equal(capturedUrl, "https://api.telegram.org/bot123:ABC/sendMessage");
+});
+
 test("email.smtp dry-runs without a credential", async () => {
   const out = await smtpSend.execute!(args({ to: "a@b.com", subject: "Hi" }));
   assert.equal(out.port, "success");

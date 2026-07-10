@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { resolveSecretRefs } from "../../engine/expr";
 import { slackReplyEventId } from "../../services/slack-events";
 import { defineNode } from "../define";
 
@@ -103,10 +104,12 @@ export const httpRequest = defineNode({
     // Auth injection: injected headers win over inline ones (so a stored token
     // overrides any placeholder). Tokens stay out of the workflow definition.
     const injected: Record<string, string> = {};
+    let secretScope: Record<string, unknown> = {};
     if (params.connectionId) {
       if (!rt.connections) throw new Error("http.request: connections are unavailable in this runtime");
       const conn = await rt.connections.get(String(params.connectionId), rt.ownerId);
       injected.authorization = `Bearer ${conn.accessToken}`;
+      secretScope = { accessToken: conn.accessToken, accountId: conn.accountId, ...conn.raw };
     } else if (params.credentialId) {
       const creds = await rt.credentials.get(String(params.credentialId), rt.ownerId);
       const s = creds.secret as { bearerToken?: unknown; headers?: unknown };
@@ -114,14 +117,24 @@ export const httpRequest = defineNode({
       if (s.headers && typeof s.headers === "object") {
         Object.assign(injected, s.headers as Record<string, string>);
       }
+      secretScope = creds.secret;
     }
-    const headers = { ...(inputs.headers as Record<string, string> | undefined), ...injected };
+
+    // Late secret templating: resolve {{ $secret.* }} in url/headers/body against
+    // the credential (e.g. Telegram's token-in-URL). Done here, after node.started
+    // is logged with the raw params, so the secret value never hits the event log.
+    const url = String(await resolveSecretRefs(inputs.url, secretScope));
+    const headers = {
+      ...((await resolveSecretRefs(inputs.headers ?? {}, secretScope)) as Record<string, string>),
+      ...injected,
+    };
+    const body = await resolveSecretRefs(inputs.body, secretScope);
 
     const res = await rt.connectors.http.request({
       method: String(inputs.method ?? "GET"),
-      url: String(inputs.url),
+      url,
       headers: Object.keys(headers).length > 0 ? headers : undefined,
-      body: inputs.body,
+      body,
     });
     const ok = res.status >= 200 && res.status < 300;
     if (inputs.failOnError && !ok) {
