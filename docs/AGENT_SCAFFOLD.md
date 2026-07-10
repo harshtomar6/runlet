@@ -136,6 +136,8 @@ export const runlet = {
   listNodeTypes: (grouped = false) => call("GET", `/node-types${grouped ? "?grouped=true" : ""}`),
   getNodeType: (type: string) => call("GET", `/node-types/${type}`),
   listCredentials: () => call("GET", "/credentials"),
+  listNodeDefs: () => call("GET", "/node-defs"),
+  createNodeDef: (def: unknown) => call("POST", "/node-defs", def),
   validate: (graph: unknown) => call("POST", "/workflows/validate", graph),
   dryRun: (graph: unknown) => call("POST", "/workflows/dry-run", graph),
   create: (wf: unknown) => call("POST", "/workflows", wf),
@@ -148,8 +150,9 @@ export const runlet = {
 ```
 
 Endpoint contracts (from Runlet):
-- `GET /node-types` → `[{ type, app, kind, category, label, outputs, credentials, inputSchema (JSON Schema) }]`. `?grouped=true` groups by app.
+- `GET /node-types` → `[{ type, app, kind, category, label, outputs, credentials, inputSchema (JSON Schema) }]`. `?grouped=true` groups by app. **When authed, the caller's custom nodes are merged in** — so `custom.*` nodes appear alongside built-ins.
 - `GET /credentials` → `[{ id, type, secretKeys, createdAt }]` (**names only, no values** — use `secretKeys` to know what to reference as `{{ $secret.<key> }}`).
+- `GET /node-defs` → the caller's custom nodes; `POST /node-defs` creates one — a **declarative HTTP node** `{ type: "custom.*", label, app, category, fields:[{name,type,required}], request:{method,url,headers?,body?}, outputs? }`. `url`/`headers`/`body` are templates over the node's fields (`{{ chatId }}`) + a credential (`{{ $secret.<key> }}`). Use this to wrap any REST API the user needs when no built-in fits.
 - `POST /workflows/validate` → `{ ok, errors: [{ code, message, nodeId? }] }`.
 - `POST /workflows/dry-run` (body `{ trigger, nodes, edges, input? }`) → `{ ok, validation, outputs: { <nodeId>: data }, events, sleeps, error? }`.
 - `POST /workflows` → `{ workflow: { id, ... }, version: { id, ... } }`.
@@ -188,6 +191,18 @@ export const tools = {
   list_credentials: tool({ description: "List the user's credentials (id, type, secretKeys — field names only).",
     parameters: z.object({}), execute: () => runlet.listCredentials() }),
 
+  list_node_defs: tool({ description: "List the user's custom (API-created) nodes.",
+    parameters: z.object({}), execute: () => runlet.listNodeDefs() }),
+
+  create_node_def: tool({ description: "Create a custom declarative HTTP node (type must start with 'custom.') to wrap a REST API when no built-in fits. Then use its type in the workflow.",
+    parameters: z.object({
+      type: z.string(), label: z.string(), app: z.string().optional(), category: z.string().optional(),
+      fields: z.array(z.object({ name: z.string(), type: z.enum(["string","number","boolean","json"]).optional(), required: z.boolean().optional() })).optional(),
+      request: z.object({ method: z.enum(["GET","POST","PUT","PATCH","DELETE"]).optional(), url: z.string(), headers: z.record(z.string()).optional(), body: z.any().optional() }),
+      outputs: z.array(z.string()).optional(),
+    }),
+    execute: (def) => runlet.createNodeDef(def) }),
+
   validate_workflow: tool({ description: "Validate a graph WITHOUT creating it. Returns { ok, errors }.",
     parameters: graphSchema, execute: (g) => runlet.validate(g) }),
 
@@ -201,8 +216,9 @@ export const tools = {
 };
 ```
 
-> Only expose **read + validate + dry-run + create-draft** to the model. Keep
-> **activate** and **execute** (real triggers/side effects) as human-confirmed UI actions.
+> Only expose **read + validate + dry-run + create-draft + create-node-def** to the
+> model (all owner-scoped config with no external effect). Keep **activate** and
+> **execute** (real triggers/side effects) as human-confirmed UI actions.
 
 ---
 
@@ -224,16 +240,21 @@ Follow this loop every time:
 3. Call list_credentials to see what auth exists. Reference secrets as {{ $secret.<key> }}
    (http.request) or via a node's credentialId/connectionId. If a required credential
    or OAuth connection is MISSING, STOP and tell the user what to connect — do not invent ids.
-4. Draft { name, trigger, nodes, edges }. Wire ports using the outputs from step 2
+4. If NO built-in node fits an API the user needs, either use http.request directly, or
+   define a reusable custom node with create_node_def (type "custom.<app>.<action>",
+   fields, and an HTTP request template using {{ field }} + {{ $secret.<key> }}). Custom
+   nodes then appear in list_node_types and are used like built-ins. Prefer built-ins;
+   only create a custom node when it's genuinely reusable or clearer.
+5. Draft { name, trigger, nodes, edges }. Wire ports using the outputs from step 2
    (e.g. action nodes use "success"/"error"; control.if uses "true"/"false").
    Reference upstream data with {{ <nodeId>.<field> }} against the scope { trigger, <nodeId> }.
-5. Call validate_workflow. If not ok, fix every error (codes explained in the guide) and re-validate.
-6. Call dry_run_workflow with a realistic sample "input". If not ok, read the node.failed
+6. Call validate_workflow. If not ok, fix every error (codes explained in the guide) and re-validate.
+7. Call dry_run_workflow with a realistic sample "input". If not ok, read the node.failed
    event + error, fix, and re-run. Use the returned per-node "outputs" to confirm your
    {{ }} references resolve to the shapes you expect.
-7. When validate AND dry-run are ok, call create_workflow (draft) and present:
+8. When validate AND dry-run are ok, call create_workflow (draft) and present:
    the plan (nodes + wiring in plain English), the dry-run outputs, and the workflow id.
-8. Tell the user they can ACTIVATE (to make triggers fire) or EXECUTE (to run once) via
+9. Tell the user they can ACTIVATE (to make triggers fire) or EXECUTE (to run once) via
    the buttons — you must NOT activate or execute yourself. Those have real effects.
 
 Rules:
@@ -321,8 +342,9 @@ export async function executeOnce(id: string, input?: unknown) { return runlet.e
    creates a draft; asks to activate.
 2. **Webhook → Slack:** "When my webhook fires, post its `message` to Slack." → `trigger.webhook`
    → `slack.post text:"{{ trigger.message }}"`.
-3. **Telegram via HTTP:** "Send me a Telegram message when X." → `http.request POST`
-   `https://api.telegram.org/bot{{ $secret.botToken }}/sendMessage` with a `credentialId`;
+3. **Telegram via HTTP or a custom node:** "Send me a Telegram message when X." → either
+   `http.request POST https://api.telegram.org/bot{{ $secret.botToken }}/sendMessage` with a
+   `credentialId`, OR `create_node_def` a reusable `custom.telegram.send` node and use it;
    agent tells the user to create a `telegram` credential first if none exists.
 4. **Repair:** feed it a request that yields a bad port/expression; confirm it reads the
    validate/dry-run error and fixes it without user help.
