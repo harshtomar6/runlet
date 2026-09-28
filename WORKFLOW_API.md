@@ -376,7 +376,7 @@ Encrypted secrets referenced by nodes via `params.credentialId`. **Write-only** 
 secret values are never returned.
 
 #### `POST /credentials` → `201`
-- **Body:** `{ type: "resend | slack | smtp | openrouter | ...", secret: { ...provider-specific } }`.
+- **Body:** `{ type: "resend | slack | smtp | postgres | mongodb | openrouter | ...", secret: { ...provider-specific } }`.
   See [§10](#10-credentials-reference) for the `secret` shape per type.
 - **Response `data`:** `{ id, type }`. Use `id` as a node's `credentialId`.
 
@@ -672,6 +672,91 @@ workflow remembers what it did on a previous run (dedup, counters, "do this once
 **`util.log`** — Write to the run log (debugging); passes through.
 - **Outputs:** `out` · **Params:** `message` (string, req, *expr*), `level` (`debug|info|warn|error`, default `info`).
 
+### 8.10 Postgres (`app: postgres`)
+
+**`postgres.query`** — Run one SQL statement against **your** Postgres (Neon, Supabase, RDS, …). *(SSRF-protected.)*
+- **Outputs:** `success`, `error` · **Credentials:** `postgres`
+- **Params:**
+  | key | type | required | default |
+  |---|---|---|---|
+  | `query` | string — **literal SQL, not templated** | **yes** | — |
+  | `values` | array *(expr)* — bound to `$1`, `$2`, … | no | `[]` |
+  | `readOnly` | boolean — runs inside `BEGIN READ ONLY` | no | `true` |
+  | `maxRows` | int (1–10000) | no | `1000` |
+  | `timeoutMs` | int (100–60000) — `statement_timeout` + connect timeout | no | `15000` |
+  | `credentialId` | string | no (dry-run without) | — |
+- **Output data:** `{ rows: object[], rowCount, command, truncated, dryRun }`. `rowCount` is the number
+  of rows returned, or rows affected for an `INSERT`/`UPDATE`/`DELETE` without `RETURNING`.
+  `truncated: true` means more than `maxRows` rows matched — add `LIMIT`/paging.
+- **Never put `{{ }}` in `query`** — it is rejected (SQL injection). Put dynamic data in `values`:
+  ```jsonc
+  { "id": "orders", "type": "postgres.query", "params": {
+      "query": "select id, total from orders where status = $1 and created_at > $2 order by id limit 100",
+      "values": ["{{ trigger.status }}", "{{ trigger.since }}"],
+      "credentialId": "<postgres-cred-id>" } }
+  ```
+  Then read `{{ orders.rows }}`, `{{ orders.rows[0].total }}`, `{{ $count(orders.rows) }}`.
+- **Writes:** set `readOnly: false`. Exactly one statement per node (no `;`-chained statements).
+  A retried step re-runs the statement, so make writes idempotent (`ON CONFLICT DO NOTHING`, upserts).
+- `readOnly` is a guard, not a permission system — for real isolation give the credential a
+  database role that only has `SELECT`.
+- Values come back as JSON: `bigint`/`numeric` as strings, timestamps as ISO strings.
+- The host must be **publicly reachable** (private/loopback addresses are blocked). Behind a
+  transaction-mode pooler (pgbouncer, Supabase `:6543`) works — no prepared statements are used.
+
+### 8.11 MongoDB (`app: mongodb`)
+
+**`mongodb.query`** — Run one MongoDB operation against **your** cluster (Atlas, self-hosted). *(SSRF-protected.)*
+- **Outputs:** `success`, `error` · **Credentials:** `mongodb`
+- **Params:**
+  | key | type | used by | default |
+  |---|---|---|---|
+  | `operation` | `find` `findOne` `aggregate` `count` `distinct` `insertOne` `insertMany` `updateOne` `updateMany` `deleteOne` `deleteMany` | — | `find` |
+  | `collection` | string | all (**required**) | — |
+  | `database` | string | all | credential `database`, else the connection string's `/db` |
+  | `filter` | object *(values expr)* | find, findOne, count, distinct, update*, delete* | `{}` |
+  | `projection`, `sort` | object | find, findOne | — |
+  | `limit`, `skip` | int | find, count (`skip` also findOne) | — |
+  | `pipeline` | object[] | aggregate (**required**) | — |
+  | `field` | string | distinct (**required**) | — |
+  | `document` / `documents` | object / object[] (≤10000) | insertOne / insertMany | — |
+  | `update` | object (`$set`, `$inc`, …) or pipeline array | updateOne, updateMany | — |
+  | `upsert` | boolean | updateOne, updateMany | `false` |
+  | `readOnly` | boolean — writes, `$out` and `$merge` are rejected while true | all | `true` |
+  | `maxRows` | int (1–10000) | find, aggregate, distinct | `1000` |
+  | `timeoutMs` | int (100–60000) — whole call incl. connect | all | `15000` |
+  | `credentialId` | string | all | dry-run without |
+- **Output data:** `{ operation, dryRun, … }` plus, per operation:
+  `find`/`aggregate` → `rows`, `rowCount`, `truncated` · `findOne` → `doc` (or `null`) · `count` → `count` ·
+  `distinct` → `values`, `truncated` · inserts → `insertedCount`, `insertedIds` ·
+  updates → `matchedCount`, `modifiedCount`, `upsertedCount`, `upsertedId` · deletes → `deletedCount`.
+- **Extended JSON:** results come back as relaxed Extended JSON — an ObjectId is `{ "$oid": "…" }`, a date is
+  `{ "$date": "…" }`. Inputs accept the same, so ids round-trip:
+  ```jsonc
+  { "id": "user", "type": "mongodb.query", "params": {
+      "operation": "findOne", "collection": "users",
+      "filter": { "email": "{{ trigger.email }}", "age": { "$gte": 18 } },
+      "credentialId": "<mongodb-cred-id>" } },
+  { "id": "orders", "type": "mongodb.query", "params": {
+      "collection": "orders",
+      "filter": { "userId": "{{ user.doc._id }}" },   // { "$oid": … } → matches the ObjectId
+      "sort": { "createdAt": -1 }, "limit": 20,
+      "credentialId": "<mongodb-cred-id>" } }
+  ```
+  To match an ObjectId from a plain hex string: `"_id": { "$oid": "{{ trigger.id }}" }`.
+- **Operators must be literal.** Values may come from `{{ expressions }}`, but if an expression produces an
+  object containing `$` keys (`{ "$ne": null }`, `$where`, `$regex`, …) the node fails — this blocks
+  operator injection from webhook payloads. Extended JSON wrappers (`$oid`, `$date`, `$numberLong`,
+  `$numberDecimal`, `$binary`, `$uuid`, `$timestamp`) are allowed.
+- **Writes:** set `readOnly: false`. `updateMany`/`deleteMany` refuse an empty `filter` (pass
+  `{ "_id": { "$exists": true } }` if you really mean every document). A retried step re-runs the
+  write, so prefer idempotent writes (upserts, `$set`).
+- `readOnly` is a guard, not a permission system — for real isolation give the credential a database
+  user with only the `read` role.
+- The cluster must be **publicly reachable** (private/loopback addresses — including replica-set members a
+  server advertises — are blocked). Only username/password auth is supported; connection options that read
+  local files (`tlsCAFile`, `tlsCertificateKeyFile`, `tlsCRLFile`) or use a proxy are rejected.
+
 ---
 
 ## 9. End-to-end recipes
@@ -833,6 +918,8 @@ below are just conventions the built-in connectors read:
 | `resend` | `{ "apiKey": "re_..." }` | `email.send` (fallback: `RESEND_API_KEY`) |
 | `slack` | `{ "webhookUrl": "https://hooks.slack.com/..." }` | `slack.post` (webhook mode — no threading) |
 | `smtp` | `{ "host", "port", "user", "pass", "from", "secure?" }` | `email.smtp` |
+| `mongodb` | `{ "connectionString": "mongodb+srv://user:pass@cluster0.x.mongodb.net/app", "database?" }` | `mongodb.query` |
+| `postgres` | `{ "connectionString": "postgres://user:pass@host:5432/db?sslmode=require" }` or `{ "host", "port?", "database", "user", "password", "sslmode?" }` | `postgres.query`. `sslmode`: `require` (default — encrypted), `verify-full` (also verify the cert), `disable` |
 | `openrouter` | `{ "apiKey": "sk-or-..." }` | all `ai.*` (fallback: `OPENROUTER_API_KEY`) |
 | `http` | `{ "bearerToken": "..." }` or `{ "headers": { "X-Api-Key": "..." } }` | `http.request` (via `credentialId`) |
 
@@ -874,7 +961,7 @@ Error codes and how to fix them:
 - Validation checks *shape and wiring*, not expression values — a param may legitimately
   hold `{{ ... }}` instead of a literal, so it won't type-check runtime values.
 - The **`from.port` must match** the source node's declared outputs exactly (case-sensitive):
-  action/AI/email/slack/http → `success`|`error`; `control.if`/`filter` etc. as listed.
+  action/AI/email/slack/http/postgres/mongodb → `success`|`error`; `control.if`/`filter` etc. as listed.
 - Always route branch nodes' *both* meaningful ports if both matter; unrouted ports
   just end that path.
 - To read data from an upstream node, use its **`id`** in the expression scope, e.g.

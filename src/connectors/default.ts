@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import type { Connectors, HttpConnector, HttpInput, SlackConnector, SlackInput, SlackResult } from "./index";
 import { OpenRouterAiConnector } from "./ai";
 import { ResendEmailConnector } from "./email";
+import { DriverMongoConnector } from "./mongo";
+import { PgPostgresConnector } from "./postgres";
 import { NodemailerSmtpConnector } from "./smtp";
 import { safeFetch } from "./ssrf";
 
@@ -74,6 +76,8 @@ export function defaultConnectors(): Connectors {
     slack: new DefaultSlackConnector(),
     http: new FetchHttpConnector(),
     smtp: new NodemailerSmtpConnector(),
+    postgres: new PgPostgresConnector(),
+    mongo: new DriverMongoConnector(),
     ai: new OpenRouterAiConnector(),
   };
 }
@@ -99,6 +103,16 @@ export function dryRunConnectors(): Connectors {
     smtp: {
       async send() {
         return { messageId: `dry_${randomUUID()}`, dryRun: true };
+      },
+    },
+    postgres: {
+      async query() {
+        return { rows: [], rowCount: 0, command: null, truncated: false, dryRun: true };
+      },
+    },
+    mongo: {
+      async query(_creds, input) {
+        return { operation: input.operation, dryRun: true };
       },
     },
     ai: {

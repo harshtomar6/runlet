@@ -54,6 +54,70 @@ export interface SmtpConnector {
   send(creds: DecryptedSecret | null, input: SmtpInput): Promise<{ messageId: string; dryRun: boolean }>;
 }
 
+export interface PostgresQueryInput {
+  query: string; // one statement, $1..$n placeholders
+  values: unknown[];
+  readOnly: boolean;
+  maxRows: number;
+  timeoutMs: number;
+}
+
+export interface PostgresQueryResult {
+  rows: Record<string, unknown>[];
+  rowCount: number; // rows returned, or rows affected for writes without RETURNING
+  command: string | null; // "SELECT", "INSERT", …
+  truncated: boolean; // more rows existed than maxRows
+  dryRun: boolean;
+}
+
+export interface PostgresConnector {
+  query(creds: DecryptedSecret | null, input: PostgresQueryInput): Promise<PostgresQueryResult>;
+}
+
+export type MongoOperation =
+  | "find"
+  | "findOne"
+  | "aggregate"
+  | "count"
+  | "distinct"
+  | "insertOne"
+  | "insertMany"
+  | "updateOne"
+  | "updateMany"
+  | "deleteOne"
+  | "deleteMany";
+
+export interface MongoQueryInput {
+  operation: MongoOperation;
+  collection: string;
+  database?: string; // overrides the credential / connection-string database
+  filter: Record<string, unknown>; // Extended JSON
+  projection?: Record<string, unknown>;
+  sort?: Record<string, unknown>;
+  limit?: number;
+  skip?: number;
+  pipeline?: Record<string, unknown>[]; // aggregate
+  field?: string; // distinct
+  document?: Record<string, unknown>; // insertOne
+  documents?: Record<string, unknown>[]; // insertMany
+  update?: Record<string, unknown> | Record<string, unknown>[]; // update operators or pipeline
+  upsert: boolean;
+  readOnly: boolean;
+  maxRows: number;
+  timeoutMs: number;
+}
+
+/** `{ operation, dryRun }` plus operation-specific fields (rows, doc, count, …). */
+export interface MongoQueryResult {
+  operation: MongoOperation;
+  dryRun: boolean;
+  [key: string]: unknown;
+}
+
+export interface MongoConnector {
+  query(creds: DecryptedSecret | null, input: MongoQueryInput): Promise<MongoQueryResult>;
+}
+
 export interface AiMessage {
   role: "system" | "user" | "assistant";
   content: string;
@@ -148,5 +212,7 @@ export interface Connectors {
   slack: SlackConnector;
   http: HttpConnector;
   smtp: SmtpConnector;
+  postgres: PostgresConnector;
+  mongo: MongoConnector;
   ai: AiConnector;
 }

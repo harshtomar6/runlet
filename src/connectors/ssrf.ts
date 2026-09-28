@@ -19,7 +19,7 @@ import { Agent, fetch as undiciFetch, type Response as UndiciResponse } from "un
  */
 const MAX_REDIRECTS = 5;
 
-interface Resolved {
+export interface Resolved {
   address: string;
   family: number;
 }
@@ -66,17 +66,18 @@ async function verify(rawUrl: string): Promise<Resolved | null> {
     throw new Error(`Blocked protocol: ${url.protocol}`);
   }
 
-  let host = url.hostname.toLowerCase();
-  if (host.startsWith("[") && host.endsWith("]")) host = host.slice(1, -1); // IPv6 literal
-  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".internal")) {
-    throw new Error(`Blocked host: ${host}`);
-  }
+  return resolvePublicHost(url.hostname);
+}
 
+/**
+ * Resolve a hostname and reject loopback/private/link-local targets. Returns the
+ * IP to pin the connection to, or null on edge runtimes without node:dns (the
+ * hostname-only guard is still applied). Shared by non-HTTP connectors (Postgres, MongoDB).
+ */
+export async function resolvePublicHost(hostname: string): Promise<Resolved | null> {
+  const host = assertPublicHostname(hostname);
   const literalFamily = isIP(host);
-  if (literalFamily) {
-    if (isPrivateAddress(host)) throw new Error(`Blocked private address: ${host}`);
-    return { address: host, family: literalFamily };
-  }
+  if (literalFamily) return { address: host, family: literalFamily }; // private literals rejected above
 
   let lookup: typeof import("node:dns/promises").lookup;
   try {
@@ -91,6 +92,17 @@ async function verify(rawUrl: string): Promise<Resolved | null> {
   const first = results[0];
   if (!first) throw new Error(`Could not resolve ${host}`);
   return { address: first.address, family: first.family };
+}
+
+/** Name-level checks (no DNS): blocked names and private IP literals. Returns the bare host. */
+export function assertPublicHostname(hostname: string): string {
+  let host = hostname.toLowerCase();
+  if (host.startsWith("[") && host.endsWith("]")) host = host.slice(1, -1); // IPv6 literal
+  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".internal")) {
+    throw new Error(`Blocked host: ${host}`);
+  }
+  if (isIP(host) && isPrivateAddress(host)) throw new Error(`Blocked private address: ${host}`);
+  return host;
 }
 
 /** An undici Agent that connects only to the pre-verified IP (no re-resolution). */
@@ -110,7 +122,7 @@ function pinnedAgent(pinned: Resolved): Agent {
   });
 }
 
-function isPrivateAddress(addr: string): boolean {
+export function isPrivateAddress(addr: string): boolean {
   const v = isIP(addr);
   if (v === 4) return isPrivateV4(addr);
   if (v === 6) return isPrivateV6(addr);
