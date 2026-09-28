@@ -20,11 +20,30 @@ const PART = /\{\{\s*([\s\S]+?)\s*\}\}/g;
 /** Per-expression CPU/time budget (DESIGN §8) — bounds a hostile expression. */
 const EVAL_TIMEOUT_MS = 1000;
 
+/**
+ * JSONata's built-in guardrails, checked on EVERY evaluation step, so a runaway
+ * expression (non-terminating recursion, huge range) is actually stopped — the
+ * promise-level `withTimeout` alone only abandons it, leaving it to run on in the
+ * background until the process runs out of memory.
+ */
+const GUARDRAILS = {
+  timeout: EVAL_TIMEOUT_MS,
+  stack: 500, // max evaluation depth (recursion)
+  sequence: 100_000, // max sequence length (e.g. `[1..1e9]`)
+} as unknown as Parameters<typeof jsonata>[1]; // typings only declare recover/RegexEngine
+
 /** Thrown for genuine expression errors (syntax / evaluation), distinct from a
  *  missing path (which JSONata returns as `undefined`, not an error). */
 export class ExpressionError extends Error {
   constructor(expr: string, cause: unknown) {
-    super(`Expression failed: "${expr}" — ${cause instanceof Error ? cause.message : String(cause)}`);
+    // JSONata throws plain objects ({ code, message, ... }), not Errors.
+    const c = cause as { message?: unknown; code?: unknown } | null;
+    const reason =
+      c && typeof c.message === "string"
+        ? `${typeof c.code === "string" ? `${c.code}: ` : ""}${c.message}`
+        : String(cause);
+    const shown = expr.length > 200 ? `${expr.slice(0, 200)}…` : expr;
+    super(`Expression failed: "${shown}" — ${reason}`);
     this.name = "ExpressionError";
   }
 }
@@ -151,7 +170,7 @@ export async function resolveSecretRefs(value: unknown, secret: Record<string, u
 async function evalWithSecret(expr: string, secret: Record<string, unknown>): Promise<unknown> {
   let compiled: ReturnType<typeof jsonata>;
   try {
-    compiled = jsonata(expr);
+    compiled = jsonata(expr, GUARDRAILS);
   } catch (err) {
     throw new ExpressionError(expr, err);
   }
@@ -167,7 +186,7 @@ async function evalExpr(expr: string, scope: Scope): Promise<unknown> {
   // throws — surface it as ExpressionError instead of silently returning "".
   let compiled: ReturnType<typeof jsonata>;
   try {
-    compiled = jsonata(expr);
+    compiled = jsonata(expr, GUARDRAILS);
   } catch (err) {
     throw new ExpressionError(expr, err);
   }

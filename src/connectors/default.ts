@@ -45,7 +45,12 @@ class DefaultSlackConnector implements SlackConnector {
           ...(input.blocks ? { blocks: input.blocks } : {}),
         }),
       });
-      return { ok: res.ok, dryRun: false };
+      // Fail loudly like the Web API path — a rejected post must not look sent.
+      if (!res.ok) {
+        const detail = (await res.text().catch(() => "")).slice(0, 200);
+        throw new Error(`Slack webhook failed: HTTP ${res.status}${detail ? ` ${detail}` : ""}`);
+      }
+      return { ok: true, dryRun: false };
     }
     return { ok: true, dryRun: true };
   }

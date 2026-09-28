@@ -32,15 +32,30 @@ class QStashScheduleManager implements ScheduleManager {
     if (!env.QSTASH_TOKEN) throw new Error("QSTASH_TOKEN is required to register schedules");
     if (!env.PUBLIC_BASE_URL) throw new Error("PUBLIC_BASE_URL is required to register schedules");
 
-    await this.unregister(workflowId); // idempotent re-activation
-
+    // Create-then-swap, so a failure at any step leaves the previous schedule in
+    // place (re-activating a live workflow must not drop its schedule):
+    //   read old id → create new → record new → delete old.
+    const previousId = await this.kv.get(this.key(workflowId));
     const client = new QStashClient({ token: env.QSTASH_TOKEN });
     const res = await client.schedules.create({
       destination: `${env.PUBLIC_BASE_URL}/triggers/tick/${workflowId}`,
       cron,
       headers: env.INTERNAL_SECRET ? { "x-internal-secret": env.INTERNAL_SECRET } : undefined,
     });
-    await this.kv.set(this.key(workflowId), res.scheduleId);
+    try {
+      await this.kv.set(this.key(workflowId), res.scheduleId);
+    } catch (err) {
+      await client.schedules.delete(res.scheduleId).catch(() => {}); // don't orphan an untracked schedule
+      throw err;
+    }
+    if (previousId && previousId !== res.scheduleId) {
+      // Best effort: the new schedule is live and recorded; a leftover old one
+      // would double-fire, so log loudly rather than fail the activation.
+      await client.schedules.delete(previousId).catch((err: unknown) => {
+        // eslint-disable-next-line no-console
+        console.error(`[schedule] failed to delete previous schedule ${previousId} for ${workflowId}`, err);
+      });
+    }
   }
 
   async unregister(workflowId: string): Promise<void> {

@@ -129,13 +129,22 @@ export class WorkflowService {
     const resolve = await buildNodeResolver(this.store, ownerId);
     const result = validateGraph({ trigger: wf.trigger, nodes: version.nodes, edges: version.edges }, resolve);
     if (!result.ok) throw new ValidationFailed(result.errors);
-    await this.store.workflows.activate(id, versionId);
 
-    // (De)register the schedule to match the active trigger.
-    if (wf.trigger.type === "schedule" && wf.trigger.cron) {
-      await this.schedules?.register(id, wf.trigger.cron);
+    // (De)register the schedule BEFORE switching versions: if that fails, the
+    // activation fails and nothing changes — never "active but never fires".
+    const scheduled = wf.trigger.type === "schedule" && !!wf.trigger.cron;
+    if (scheduled) {
+      await this.schedules?.register(id, wf.trigger.cron as string);
     } else {
       await this.schedules?.unregister(id);
+    }
+    try {
+      await this.store.workflows.activate(id, versionId);
+    } catch (err) {
+      // A schedule we just created for a not-yet-active workflow would only
+      // produce rejected ticks — remove it (best effort) and surface the error.
+      if (scheduled && wf.status !== "active") await this.schedules?.unregister(id).catch(() => {});
+      throw err;
     }
   }
 

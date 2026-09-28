@@ -140,3 +140,25 @@ test("an expression that fails to resolve records node.failed (not silent)", asy
   const failed = sink.events.find((e) => e.type === "node.failed" && e.nodeId === "e1");
   assert.ok(failed, "resolution error should record node.failed for e1");
 });
+
+test("JSONata-built objects are stored as plain JSON (the Postgres event log can't take null-prototype objects)", async () => {
+  const { is, SQL } = await import("drizzle-orm");
+  const { sink } = await run(
+    {
+      ...base,
+      nodes: [
+        { id: "t", type: "trigger.manual", params: {} },
+        { id: "msg", type: "data.transform", params: { value: "{{ { 'text': 'hi', 'blocks': [ { 'type': 'divider' } ] } }}" } },
+      ],
+      edges: [{ from: { nodeId: "t", port: "out" }, to: { nodeId: "msg", port: "in" } }],
+    },
+    {},
+  );
+  const out = sink.events.find((e) => e.type === "node.executed" && e.nodeId === "msg")?.output as {
+    blocks: object[];
+  };
+  assert.deepEqual(out, { text: "hi", blocks: [{ type: "divider" }] });
+  assert.equal(Object.getPrototypeOf(out), Object.prototype);
+  assert.equal(Object.getPrototypeOf(out.blocks[0]), Object.prototype);
+  assert.doesNotThrow(() => is(out, SQL)); // what drizzle's insert path runs on every value
+});

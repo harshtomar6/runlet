@@ -148,7 +148,9 @@ export async function runWorkflow(exec: ExecutionContext, p: RunParams): Promise
         const inputs = await resolveInputs(node.params, sc);
         const parsed = schema.safeParse(inputs);
         if (!parsed.success) throw new Error(`Invalid inputs for node "${id}" (${node.type}): ${parsed.error.message}`);
-        const result = await executeFn({ inputs: parsed.data as Record<string, unknown>, params: node.params, rt });
+        const result = plainOutcome(
+          await executeFn({ inputs: parsed.data as Record<string, unknown>, params: node.params, rt }),
+        );
         await sink.append(evt(p.runId, "node.executed", { nodeId: id, output: result.data ?? null }));
         return result;
       } catch (err) {
@@ -186,7 +188,9 @@ export async function runWorkflow(exec: ExecutionContext, p: RunParams): Promise
       const inputs = await resolveInputs(node.params, sc);
       const parsed = schema.safeParse(inputs);
       if (!parsed.success) throw new Error(`Invalid inputs for node "${id}" (${node.type}): ${parsed.error.message}`);
-      const result = await executeFn({ inputs: parsed.data as Record<string, unknown>, params: node.params, rt });
+      const result = plainOutcome(
+        await executeFn({ inputs: parsed.data as Record<string, unknown>, params: node.params, rt }),
+      );
       await exec.run(`${baseStepId}:executed`, () =>
         sink.append(evt(p.runId, "node.executed", { nodeId: id, output: result.data ?? null })),
       );
@@ -210,6 +214,17 @@ function evt(
   extra: { nodeId?: string; input?: unknown; output?: unknown; error?: unknown },
 ): RunEvent {
   return { id: newId(), runId, type, ts: new Date(), ...extra };
+}
+
+/**
+ * A node's output as plain JSON. JSONata builds objects with a null prototype,
+ * which the Postgres event log (drizzle) rejects ("Cannot read properties of null
+ * (reading 'constructor')"); durable steps JSON-serialize outputs anyway, so this
+ * also makes local, dry-run and durable runs see identical data.
+ */
+function plainOutcome(outcome: NodeOutcome): NodeOutcome {
+  if (outcome.data === undefined) return outcome;
+  return { ...outcome, data: JSON.parse(JSON.stringify(outcome.data)) as unknown };
 }
 
 function serializeError(err: unknown): { name: string; message: string } {
