@@ -5,6 +5,7 @@ import { ApiError } from "../../errors";
 import { TriggerService } from "../../services/trigger-service";
 import { store } from "../../storage/factory";
 import { ok } from "../lib/respond";
+import { secretEquals } from "../lib/signature";
 import type { AppEnv } from "../types";
 
 const triggers = new TriggerService(store, dispatcher);
@@ -18,7 +19,7 @@ internalTriggers.post("/tick/:workflowId", async (c) => {
   if (!env.INTERNAL_SECRET) {
     throw new ApiError(503, "internal_secret_unset", "INTERNAL_SECRET is not configured");
   }
-  if (c.req.header("x-internal-secret") !== env.INTERNAL_SECRET) {
+  if (!secretEquals(c.req.header("x-internal-secret"), env.INTERNAL_SECRET)) {
     throw new ApiError(401, "unauthorized", "Invalid internal secret");
   }
   const { runId } = await triggers.runWorkflowNow(c.req.param("workflowId"), {

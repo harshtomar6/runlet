@@ -6,6 +6,7 @@ import { ApiKeyService } from "../../services/api-key-service";
 import { store } from "../../storage/factory";
 import { parseBody } from "../lib/parse";
 import { ok } from "../lib/respond";
+import { secretEquals } from "../lib/signature";
 import type { AppEnv } from "../types";
 
 const apiKeys = new ApiKeyService(store);
@@ -25,7 +26,7 @@ export const admin = new Hono<AppEnv>();
 
 admin.use("*", async (c, next) => {
   if (!env.ADMIN_SECRET) throw new ApiError(503, "admin_secret_unset", "ADMIN_SECRET is not configured");
-  if (c.req.header("x-admin-secret") !== env.ADMIN_SECRET) {
+  if (!secretEquals(c.req.header("x-admin-secret"), env.ADMIN_SECRET)) {
     throw new ApiError(401, "unauthorized", "Invalid admin secret");
   }
   await next();
